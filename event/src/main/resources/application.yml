@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: event_manage
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/events
+    username: root
+    password: 2003
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQLDialect
+
+server:
+  port: 8080
+
+app:
+  jwt:
+    secret: eventManagementJwtSecretKeyForEncodingAndDecoding
+    expiration-ms: 86400000
