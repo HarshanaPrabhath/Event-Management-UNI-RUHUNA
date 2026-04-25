@@ -96,6 +96,7 @@ public class AuthenticationService {
                 .userId(savedUser.getUserId())
                 .username(savedUser.getUserName())
                 .email(savedUser.getEmail())
+                .regNumber(savedUser.getRegNumber())
                 .roles(savedUser.getRoles()
                         .stream()
                         .map(role -> role.getRoleName().name())
