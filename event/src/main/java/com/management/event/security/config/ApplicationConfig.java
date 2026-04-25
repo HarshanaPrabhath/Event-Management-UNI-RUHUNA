@@ -1,7 +1,5 @@
 package com.management.event.security.config;
 
-
-
 import com.management.event.entity.AppRole;
 import com.management.event.entity.Role;
 import com.management.event.entity.User;
@@ -76,47 +74,63 @@ public class ApplicationConfig {
         return http.build();
     }
 
-
     @Bean
     public CommandLineRunner initUsers(UserRepository userRepository,
                                        RoleRepository roleRepository,
                                        PasswordEncoder passwordEncoder) {
         return args -> {
-
-
             for (AppRole appRole : AppRole.values()) {
                 if (roleRepository.findByRoleName(appRole).isEmpty()) {
                     roleRepository.save(new Role(appRole));
                 }
             }
 
-
-            Role userRole  = roleRepository.findByRoleName(AppRole.ROLE_USER).orElseThrow();
+            Role userRole = roleRepository.findByRoleName(AppRole.ROLE_USER).orElseThrow();
             Role adminRole = roleRepository.findByRoleName(AppRole.ROLE_ADMIN).orElseThrow();
-
+            Role lecturerRole = roleRepository.findByRoleName(AppRole.ROLE_LECTURER).orElseThrow();
+            Role deanRole = roleRepository.findByRoleName(AppRole.ROLE_DEAN).orElseThrow();
 
             if (userRepository.findByEmail("john@example.com").isEmpty()) {
                 User user1 = new User();
                 user1.setUserName("john");
                 user1.setEmail("john@example.com");
                 user1.setRegNumber("TG/2023/001");
-                user1.setPassword(passwordEncoder.encode("userpass"));
+                user1.setPassword(passwordEncoder.encode("1234"));
                 user1.setRoles(new HashSet<>(List.of(userRole)));
                 userRepository.save(user1);
             }
-
 
             if (userRepository.findByEmail("admin@example.com").isEmpty()) {
                 User user2 = new User();
                 user2.setUserName("admin");
                 user2.setEmail("admin@example.com");
                 user2.setRegNumber("ADMIN/001");
-                user2.setPassword(passwordEncoder.encode("adminpass"));
+                user2.setPassword(passwordEncoder.encode("1234"));
                 user2.setRoles(new HashSet<>(List.of(adminRole)));
                 userRepository.save(user2);
             }
 
-            System.out.println("✅ Default roles and users initialized (if missing).");
+            if (userRepository.findByRegNumber("LC2001").isEmpty()) {
+                User lecturer = new User();
+                lecturer.setUserName("lecturer");
+                lecturer.setEmail("lecturer@example.com");
+                lecturer.setRegNumber("LC2001");
+                lecturer.setPassword(passwordEncoder.encode("1234"));
+                lecturer.setRoles(new HashSet<>(List.of(lecturerRole)));
+                userRepository.save(lecturer);
+            }
+
+            if (userRepository.findByRegNumber("DID100").isEmpty()) {
+                User dean = new User();
+                dean.setUserName("dean");
+                dean.setEmail("dean@example.com");
+                dean.setRegNumber("DID100");
+                dean.setPassword(passwordEncoder.encode("deanpass"));
+                dean.setRoles(new HashSet<>(List.of(deanRole)));
+                userRepository.save(dean);
+            }
+
+            System.out.println("Default roles and users initialized (if missing).");
         };
     }
 }
