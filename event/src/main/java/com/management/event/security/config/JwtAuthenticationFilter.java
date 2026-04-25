@@ -15,14 +15,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-
 @Component
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final UserDetailsService userDetailsService;
-
 
     @Override
     protected void doFilterInternal(
@@ -31,8 +29,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
 
+
         String path = request.getServletPath();
-        if (path.startsWith("/api/auth/register") || path.startsWith("/api/auth/signin") || path.startsWith("/api/auth/signout")) {
+        if (path.startsWith("/api/auth/register")
+                || path.startsWith("/api/auth/signin")
+                || path.startsWith("/api/auth/signout")
+
+        ) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -44,11 +47,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
-        final String userEmail = jwtService.extractUserName(token);
+        // ✅ renamed from userEmail to userRegNumber - we now store regNumber in JWT subject
+        final String userRegNumber = jwtService.extractUserName(token);
 
-
-        if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            UserDetails userDetails = userDetailsService.loadUserByUsername(userEmail);
+        if (userRegNumber != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            UserDetails userDetails = userDetailsService.loadUserByUsername(userRegNumber);
             if (jwtService.isTokenValid(token, userDetails)) {
                 UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                         userDetails,
@@ -58,28 +61,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 authToken.setDetails(
                         new WebAuthenticationDetailsSource().buildDetails(request)
                 );
-
                 SecurityContextHolder.getContext().setAuthentication(authToken);
             }
         }
         filterChain.doFilter(request, response);
     }
 
-    public String parseJwt(HttpServletRequest request){
-
+    public String parseJwt(HttpServletRequest request) {
         String jwtFromCookie = jwtService.getJwtFromCookie(request);
-
         if (jwtFromCookie != null) {
             return jwtFromCookie;
         }
 
         String jwtFromHeader = jwtService.getJwtFromHeader(request);
-
-        if(jwtFromHeader != null){
+        if (jwtFromHeader != null) {
             return jwtFromHeader;
         }
         return null;
-
     }
-
 }

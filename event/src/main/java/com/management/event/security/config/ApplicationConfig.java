@@ -58,7 +58,12 @@ public class ApplicationConfig {
                 .cors(Customizer.withDefaults())
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/signin", "/api/auth/register", "/api/public/**", "/images/**")
+                        .requestMatchers(
+                                "/api/auth/signin",
+                                "/api/auth/register",
+                                "/api/public/**",
+                                "/images/**"
+                        )
                         .permitAll()
                         .anyRequest()
                         .authenticated()
@@ -70,6 +75,7 @@ public class ApplicationConfig {
 
         return http.build();
     }
+
 
     @Bean
     public CommandLineRunner initUsers(UserRepository userRepository,
