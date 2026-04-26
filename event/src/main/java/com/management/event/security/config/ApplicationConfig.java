@@ -60,7 +60,8 @@ public class ApplicationConfig {
                                 "/api/auth/signin",
                                 "/api/auth/register",
                                 "/api/public/**",
-                                "/images/**"
+                                "/images/**",
+                                "/uploads/**"
                         )
                         .permitAll()
                         .anyRequest()
