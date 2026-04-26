@@ -1,7 +1,7 @@
 package com.management.event.controller;
 
 import com.management.event.dto.LetterPlaceRequestDto;
-import com.management.event.dto.WorkflowLetterResponseDto;
+import com.management.event.dto.LetterToApproveResponseDto;
 import com.management.event.service.LetterService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -23,12 +23,12 @@ public class LetterController {
     private final LetterService letterService;
 
     @GetMapping("/my")
-    public ResponseEntity<List<WorkflowLetterResponseDto>> getMyLetters() {
+    public ResponseEntity<List<LetterToApproveResponseDto>> getMyLetters() {
         return ResponseEntity.ok(letterService.getMyLetters());
     }
 
     @GetMapping("/to-approve")
-    public ResponseEntity<List<WorkflowLetterResponseDto>> getLettersToApprove() {
+    public ResponseEntity<List<LetterToApproveResponseDto>> getLettersToApprove() {
         return ResponseEntity.ok(letterService.getLettersToApprove());
     }
 

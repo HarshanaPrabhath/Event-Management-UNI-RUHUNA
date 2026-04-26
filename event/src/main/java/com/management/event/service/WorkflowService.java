@@ -28,41 +28,6 @@ public class WorkflowService {
     private final LetterRepository letterRepository;
     private final AuthenticatedUser authenticatedUser;
 
-    @Transactional(readOnly = true)
-    public List<WorkflowLetterResponseDto> getMyWorkflows() {
-        return getMyCurrentStepLetters();
-    }
-
-    @Transactional(readOnly = true)
-    public List<WorkflowLetterResponseDto> getMyCurrentStepLetters() {
-        User currentUser = authenticatedUser.getAuthenticatedUser();
-
-        List<WorkflowStep> currentSteps = workflowStepRepository
-                .findByUserRegNumberAndStatusOrderByLetterIdDesc(currentUser.getRegNumber(), StepStatus.CURRENT);
-
-        return currentSteps
-                .stream()
-                .map(step -> {
-                    List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(step.getLetter().getId());
-                    return buildWorkflowResponse(step.getLetter(), steps, currentUser.getRegNumber());
-                })
-                .toList();
-    }
-
-    @Transactional(readOnly = true)
-    public WorkflowLetterResponseDto getWorkflowByLetterId(Long letterId) {
-        User currentUser = authenticatedUser.getAuthenticatedUser();
-        Letter letter = letterRepository.findById(letterId)
-                .orElseThrow(() -> new ResourceNotFoundException("Letter", "id", letterId));
-        List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(letterId);
-
-        if (steps.isEmpty()) {
-            throw new ResourceNotFoundException("Workflow", "letterId", letterId);
-        }
-
-        return buildWorkflowResponse(letter, steps, currentUser.getRegNumber());
-    }
-
     @Transactional
     public WorkflowLetterResponseDto actOnWorkflow(Long letterId, @Valid WorkflowActionRequestDto request) {
         User currentUser = authenticatedUser.getAuthenticatedUser();

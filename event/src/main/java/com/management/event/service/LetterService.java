@@ -2,9 +2,10 @@ package com.management.event.service;
 
 import com.management.event.config.AuthenticatedUser;
 import com.management.event.dto.ApproverDto;
+import com.management.event.dto.ApproverSummaryResponseDto;
 import com.management.event.dto.LetterPlaceRequestDto;
-import com.management.event.dto.WorkflowLetterResponseDto;
-import com.management.event.dto.WorkflowStepResponseDto;
+import com.management.event.dto.LetterToApproveResponseDto;
+import com.management.event.dto.SenderSummaryResponseDto;
 import com.management.event.entity.Letter;
 import com.management.event.entity.LetterStatus;
 import com.management.event.entity.StepStatus;
@@ -17,6 +18,7 @@ import com.management.event.repository.UserRepository;
 import com.management.event.repository.WorkflowStepRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -42,26 +44,23 @@ public class LetterService {
     private final UserRepository userRepository;
     private final AuthenticatedUser authenticatedUser;
     private final WorkflowStepRepository workflowStepRepository;
+    private final ModelMapper modelMapper;
 
     @Transactional(readOnly = true)
-    public List<WorkflowLetterResponseDto> getMyLetters() {
+    public List<LetterToApproveResponseDto> getMyLetters() {
         User currentUser = authenticatedUser.getAuthenticatedUser();
-
-        System.out.println(currentUser.getRegNumber());
-
-        System.out.println(letterRepository.findByUserRegNumberOrderByIdDesc(currentUser.getRegNumber()));
 
         return letterRepository.findByUserRegNumberOrderByIdDesc(currentUser.getRegNumber())
                 .stream()
                 .map(letter -> {
                     List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(letter.getId());
-                    return buildLetterResponse(letter, steps, currentUser.getRegNumber());
+                    return buildLetterToApproveResponse(letter, steps);
                 })
                 .toList();
     }
 
     @Transactional(readOnly = true)
-    public List<WorkflowLetterResponseDto> getLettersToApprove() {
+    public List<LetterToApproveResponseDto> getLettersToApprove() {
         User currentUser = authenticatedUser.getAuthenticatedUser();
 
         return workflowStepRepository
@@ -69,7 +68,7 @@ public class LetterService {
                 .stream()
                 .map(step -> {
                     List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(step.getLetter().getId());
-                    return buildLetterResponse(step.getLetter(), steps, currentUser.getRegNumber());
+                    return buildLetterToApproveResponse(step.getLetter(), steps);
                 })
                 .toList();
     }
@@ -113,48 +112,40 @@ public class LetterService {
         workflowStepRepository.saveAll(steps);
     }
 
-    private WorkflowLetterResponseDto buildLetterResponse(Letter letter,
-                                                          List<WorkflowStep> steps,
-                                                          String currentUserRegNumber) {
-        List<WorkflowStepResponseDto> stepResponses = steps.stream()
-                .map(this::mapStep)
-                .toList();
+    private LetterToApproveResponseDto buildLetterToApproveResponse(Letter letter, List<WorkflowStep> steps) {
+        LetterToApproveResponseDto response = modelMapper.map(letter, LetterToApproveResponseDto.class);
+        response.setLetterId(letter.getId());
+        response.setGlobalStatus(letter.getGlobalStatus() != null ? letter.getGlobalStatus().name() : null);
+        response.setSender(SenderSummaryResponseDto.builder()
+                .name(letter.getUser().getUserName())
+                .regNumber(letter.getUser().getRegNumber())
+                .build());
 
-        WorkflowStepResponseDto currentStep = stepResponses.stream()
-                .filter(step -> StepStatus.CURRENT.name().equals(step.getStatus()))
+        WorkflowStep currentStep = steps.stream()
+                .filter(step -> step.getStatus() == StepStatus.CURRENT)
                 .findFirst()
                 .orElse(null);
 
-        WorkflowStepResponseDto myStep = stepResponses.stream()
-                .filter(step -> step.getApproverRegNumber().equals(currentUserRegNumber))
-                .findFirst()
-                .orElse(null);
+        if (currentStep != null) {
+            response.setCurrentApprover(mapApprover(currentStep));
+            response.setNextApprovers(steps.stream()
+                    .filter(step -> step.getStepOrder() > currentStep.getStepOrder())
+                    .map(this::mapApprover)
+                    .toList());
+        } else {
+            response.setCurrentApprover(null);
+            response.setNextApprovers(List.of());
+        }
 
-        return WorkflowLetterResponseDto.builder()
-                .letterId(letter.getId())
-                .title(letter.getTitle())
-                .eventDate(letter.getEventDate())
-                .eventTime(letter.getEventTime())
-                .eventPlace(letter.getEventPlace())
-                .description(letter.getDescription())
-                .globalStatus(letter.getGlobalStatus() != null ? letter.getGlobalStatus().name() : null)
-                .pdfPath(letter.getPdfPath())
-                .requesterName(letter.getUser().getUserName())
-                .requesterRegNumber(letter.getUser().getRegNumber())
-                .currentStep(currentStep)
-                .myStep(myStep)
-                .steps(stepResponses)
-                .build();
+        return response;
     }
 
-    private WorkflowStepResponseDto mapStep(WorkflowStep step) {
-        return WorkflowStepResponseDto.builder()
-                .id(step.getId())
-                .approverName(step.getUser().getUserName())
-                .approverRegNumber(step.getUser().getRegNumber())
+    private ApproverSummaryResponseDto mapApprover(WorkflowStep step) {
+        return ApproverSummaryResponseDto.builder()
+                .name(step.getUser().getUserName())
+                .regNumber(step.getUser().getRegNumber())
                 .stepOrder(step.getStepOrder())
                 .status(step.getStatus().name())
-                .remarks(step.getRemarks())
                 .build();
     }
 
