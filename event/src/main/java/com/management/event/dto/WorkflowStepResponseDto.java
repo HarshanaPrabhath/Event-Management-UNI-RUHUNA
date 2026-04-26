@@ -7,7 +7,6 @@ import lombok.Data;
 @Builder
 public class WorkflowStepResponseDto {
     private Long id;
-    private Integer approverId;
     private String approverName;
     private String approverRegNumber;
     private Integer stepOrder;

@@ -12,9 +12,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -25,8 +30,6 @@ public class AuthController {
 
     @PostMapping("/register")
     public ResponseEntity<?> registerUser(@RequestBody RegisterRequest request) {
-
-
         if (userRepository.existsByRegNumber(request.getRegNumber())) {
             return ResponseEntity
                     .badRequest()
@@ -62,7 +65,6 @@ public class AuthController {
 
     @GetMapping("/user")
     public ResponseEntity<UserInfoResponse> currentUser(Authentication authentication) {
-
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
 
         List<String> roles = userDetails.getAuthorities()
@@ -70,16 +72,14 @@ public class AuthController {
                 .map(item -> item.getAuthority())
                 .toList();
 
-
         UserInfoResponse userInfoResponse = UserInfoResponse.builder()
-                .userId(userDetails.getUserId())
-                .username(userDetails.getUsername())
+                .username(userDetails.getDisplayName())
                 .email(userDetails.getEmail())
                 .regNumber(userDetails.getRegNumber())
                 .roles(roles)
                 .build();
 
-        return ResponseEntity.ok().body(userInfoResponse);
+        return ResponseEntity.ok(userInfoResponse);
     }
 
     @PostMapping("/signout")

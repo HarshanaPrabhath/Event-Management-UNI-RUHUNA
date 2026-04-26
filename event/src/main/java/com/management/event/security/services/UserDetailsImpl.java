@@ -21,8 +21,7 @@ public class UserDetailsImpl implements UserDetails {
 
     private static final long serialVersionUID = 1L;
 
-    private Integer userId;
-    private String username;
+    private String displayName;
     private String email;
     private String regNumber;
 
@@ -31,31 +30,31 @@ public class UserDetailsImpl implements UserDetails {
 
     private Collection<? extends GrantedAuthority> authorities;
 
-
-    public UserDetailsImpl(Integer userId, String username, String email, String regNumber, String password, Collection<? extends GrantedAuthority> authorities) {
-        this.userId = userId;
-        this.username = username;
+    public UserDetailsImpl(String displayName,
+                           String email,
+                           String regNumber,
+                           String password,
+                           Collection<? extends GrantedAuthority> authorities) {
+        this.displayName = displayName;
         this.email = email;
         this.regNumber = regNumber;
         this.password = password;
         this.authorities = authorities;
     }
 
-
     public static UserDetailsImpl build(User user) {
-        List<GrantedAuthority> authorities =
-                user.getRoles()
-                        .stream()
-                        .map(role -> new SimpleGrantedAuthority(role.getRoleName().name()))
-                        .collect(Collectors.toList());
+        List<GrantedAuthority> authorities = user.getRoles()
+                .stream()
+                .map(role -> new SimpleGrantedAuthority(role.getRoleName().name()))
+                .collect(Collectors.toList());
 
         return new UserDetailsImpl(
-                user.getUserId(),
                 user.getUserName(),
                 user.getEmail(),
-                user.getRegNumber(),  // ✅ added
+                user.getRegNumber(),
                 user.getPassword(),
-                authorities);
+                authorities
+        );
     }
 
     @Override
@@ -74,27 +73,39 @@ public class UserDetailsImpl implements UserDetails {
     }
 
     @Override
-    public boolean isAccountNonExpired() { return true; }
+    public boolean isAccountNonExpired() {
+        return true;
+    }
 
     @Override
-    public boolean isAccountNonLocked() { return true; }
+    public boolean isAccountNonLocked() {
+        return true;
+    }
 
     @Override
-    public boolean isCredentialsNonExpired() { return true; }
+    public boolean isCredentialsNonExpired() {
+        return true;
+    }
 
     @Override
-    public boolean isEnabled() { return true; }
+    public boolean isEnabled() {
+        return true;
+    }
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
         UserDetailsImpl user = (UserDetailsImpl) o;
-        return Objects.equals(userId, user.userId);
+        return Objects.equals(regNumber, user.regNumber);
     }
 
-
-    public String getRegNumber() {
-        return regNumber;
+    @Override
+    public int hashCode() {
+        return Objects.hash(regNumber);
     }
 }

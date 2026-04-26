@@ -18,7 +18,6 @@ public class WorkflowLetterResponseDto {
     private String description;
     private String globalStatus;
     private String pdfPath;
-    private Integer requesterId;
     private String requesterName;
     private String requesterRegNumber;
     private WorkflowStepResponseDto currentStep;

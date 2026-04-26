@@ -12,7 +12,6 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class UserInfoResponse {
-    private Integer userId;
     private String username;
     private String regNumber;
     private String email;

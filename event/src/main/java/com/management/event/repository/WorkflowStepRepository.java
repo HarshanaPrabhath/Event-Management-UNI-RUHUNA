@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface WorkflowStepRepository extends JpaRepository<WorkflowStep, Long> {
-    List<WorkflowStep> findByUserUserIdOrderByLetterIdDescStepOrderAsc(Integer userId);
+    List<WorkflowStep> findByUserRegNumberAndStatusOrderByLetterIdDesc(String regNumber, StepStatus status);
 
     List<WorkflowStep> findByLetterIdOrderByStepOrderAsc(Long letterId);
 

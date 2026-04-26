@@ -20,7 +20,7 @@ public class Letter {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false)
+    @JoinColumn(name = "user_reg_number", referencedColumnName = "reg_number", nullable = false)
     private User user;
 
     private String title;

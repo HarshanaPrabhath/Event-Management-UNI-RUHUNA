@@ -1,6 +1,15 @@
 package com.management.event.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -23,32 +32,28 @@ import java.util.Set;
 public class User {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
-    @Column(name = "user_id")
-    private Integer userId;
-
-
     @NotEmpty
-    @Size(max = 30)
-    private String userName;
-
-
-    @NotEmpty
-    @Column(name = "reg_number", unique = true, nullable = false)
+    @Column(name = "reg_number", unique = true, nullable = false, updatable = false)
     private String regNumber;
 
     @NotEmpty
+    @Size(max = 30)
+    @Column(name = "user_name", nullable = false)
+    private String userName;
+
+    @NotEmpty
     @Size(max = 50)
-    @Column(unique = true)
+    @Column(name = "email", unique = true, nullable = false)
     private String email;
 
     @NotEmpty
+    @Column(name = "password", nullable = false)
     private String password;
 
     @ToString.Exclude
     @ManyToMany(cascade = {CascadeType.MERGE, CascadeType.REFRESH}, fetch = FetchType.EAGER)
     @JoinTable(name = "user_role",
-            joinColumns = @JoinColumn(name = "user_id"),
+            joinColumns = @JoinColumn(name = "user_reg_number", referencedColumnName = "reg_number"),
             inverseJoinColumns = @JoinColumn(name = "role_id"))
     private Set<Role> roles = new HashSet<>();
 }

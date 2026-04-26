@@ -19,7 +19,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -31,14 +30,22 @@ public class WorkflowService {
 
     @Transactional(readOnly = true)
     public List<WorkflowLetterResponseDto> getMyWorkflows() {
+        return getMyCurrentStepLetters();
+    }
+
+    @Transactional(readOnly = true)
+    public List<WorkflowLetterResponseDto> getMyCurrentStepLetters() {
         User currentUser = authenticatedUser.getAuthenticatedUser();
 
-        return workflowStepRepository.findByUserUserIdOrderByLetterIdDescStepOrderAsc(currentUser.getUserId())
+        List<WorkflowStep> currentSteps = workflowStepRepository
+                .findByUserRegNumberAndStatusOrderByLetterIdDesc(currentUser.getRegNumber(), StepStatus.CURRENT);
+
+        return currentSteps
                 .stream()
-                .collect(Collectors.groupingBy(step -> step.getLetter().getId(), Collectors.toList()))
-                .values()
-                .stream()
-                .map(steps -> buildWorkflowResponse(steps.get(0).getLetter(), steps, currentUser.getUserId()))
+                .map(step -> {
+                    List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(step.getLetter().getId());
+                    return buildWorkflowResponse(step.getLetter(), steps, currentUser.getRegNumber());
+                })
                 .toList();
     }
 
@@ -53,7 +60,7 @@ public class WorkflowService {
             throw new ResourceNotFoundException("Workflow", "letterId", letterId);
         }
 
-        return buildWorkflowResponse(letter, steps, currentUser.getUserId());
+        return buildWorkflowResponse(letter, steps, currentUser.getRegNumber());
     }
 
     @Transactional
@@ -70,7 +77,7 @@ public class WorkflowService {
                 .findFirst()
                 .orElseThrow(() -> new ApiException("No current workflow step found"));
 
-        if (!currentStep.getUser().getUserId().equals(currentUser.getUserId())) {
+        if (!currentStep.getUser().getRegNumber().equals(currentUser.getRegNumber())) {
             throw new ApiException("You can only act on your current workflow step");
         }
 
@@ -88,7 +95,7 @@ public class WorkflowService {
         workflowStepRepository.saveAll(steps);
         letterRepository.save(currentStep.getLetter());
 
-        return buildWorkflowResponse(currentStep.getLetter(), steps, currentUser.getUserId());
+        return buildWorkflowResponse(currentStep.getLetter(), steps, currentUser.getRegNumber());
     }
 
     private void approveCurrentStep(List<WorkflowStep> steps, WorkflowStep currentStep) {
@@ -113,7 +120,9 @@ public class WorkflowService {
         currentStep.getLetter().setGlobalStatus(LetterStatus.REJECTED);
     }
 
-    private WorkflowLetterResponseDto buildWorkflowResponse(Letter letter, List<WorkflowStep> steps, Integer currentUserId) {
+    private WorkflowLetterResponseDto buildWorkflowResponse(Letter letter,
+                                                            List<WorkflowStep> steps,
+                                                            String currentUserRegNumber) {
         List<WorkflowStepResponseDto> stepResponses = steps.stream()
                 .map(this::mapStep)
                 .toList();
@@ -124,7 +133,7 @@ public class WorkflowService {
                 .orElse(null);
 
         WorkflowStepResponseDto myStep = stepResponses.stream()
-                .filter(step -> step.getApproverId().equals(currentUserId))
+                .filter(step -> step.getApproverRegNumber().equals(currentUserRegNumber))
                 .findFirst()
                 .orElse(null);
 
@@ -137,7 +146,6 @@ public class WorkflowService {
                 .description(letter.getDescription())
                 .globalStatus(letter.getGlobalStatus() != null ? letter.getGlobalStatus().name() : null)
                 .pdfPath(letter.getPdfPath())
-                .requesterId(letter.getUser().getUserId())
                 .requesterName(letter.getUser().getUserName())
                 .requesterRegNumber(letter.getUser().getRegNumber())
                 .currentStep(currentStep)
@@ -149,7 +157,6 @@ public class WorkflowService {
     private WorkflowStepResponseDto mapStep(WorkflowStep step) {
         return WorkflowStepResponseDto.builder()
                 .id(step.getId())
-                .approverId(step.getUser().getUserId())
                 .approverName(step.getUser().getUserName())
                 .approverRegNumber(step.getUser().getRegNumber())
                 .stepOrder(step.getStepOrder())

@@ -3,6 +3,8 @@ package com.management.event.service;
 import com.management.event.config.AuthenticatedUser;
 import com.management.event.dto.ApproverDto;
 import com.management.event.dto.LetterPlaceRequestDto;
+import com.management.event.dto.WorkflowLetterResponseDto;
+import com.management.event.dto.WorkflowStepResponseDto;
 import com.management.event.entity.Letter;
 import com.management.event.entity.LetterStatus;
 import com.management.event.entity.StepStatus;
@@ -15,8 +17,6 @@ import com.management.event.repository.UserRepository;
 import com.management.event.repository.WorkflowStepRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -42,6 +42,37 @@ public class LetterService {
     private final UserRepository userRepository;
     private final AuthenticatedUser authenticatedUser;
     private final WorkflowStepRepository workflowStepRepository;
+
+    @Transactional(readOnly = true)
+    public List<WorkflowLetterResponseDto> getMyLetters() {
+        User currentUser = authenticatedUser.getAuthenticatedUser();
+
+        System.out.println(currentUser.getRegNumber());
+
+        System.out.println(letterRepository.findByUserRegNumberOrderByIdDesc(currentUser.getRegNumber()));
+
+        return letterRepository.findByUserRegNumberOrderByIdDesc(currentUser.getRegNumber())
+                .stream()
+                .map(letter -> {
+                    List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(letter.getId());
+                    return buildLetterResponse(letter, steps, currentUser.getRegNumber());
+                })
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<WorkflowLetterResponseDto> getLettersToApprove() {
+        User currentUser = authenticatedUser.getAuthenticatedUser();
+
+        return workflowStepRepository
+                .findByUserRegNumberAndStatusOrderByLetterIdDesc(currentUser.getRegNumber(), StepStatus.CURRENT)
+                .stream()
+                .map(step -> {
+                    List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(step.getLetter().getId());
+                    return buildLetterResponse(step.getLetter(), steps, currentUser.getRegNumber());
+                })
+                .toList();
+    }
 
     @Transactional
     public void placeLetter(@Valid LetterPlaceRequestDto letterPlaceRequestDto) {
@@ -82,7 +113,50 @@ public class LetterService {
         workflowStepRepository.saveAll(steps);
     }
 
+    private WorkflowLetterResponseDto buildLetterResponse(Letter letter,
+                                                          List<WorkflowStep> steps,
+                                                          String currentUserRegNumber) {
+        List<WorkflowStepResponseDto> stepResponses = steps.stream()
+                .map(this::mapStep)
+                .toList();
 
+        WorkflowStepResponseDto currentStep = stepResponses.stream()
+                .filter(step -> StepStatus.CURRENT.name().equals(step.getStatus()))
+                .findFirst()
+                .orElse(null);
+
+        WorkflowStepResponseDto myStep = stepResponses.stream()
+                .filter(step -> step.getApproverRegNumber().equals(currentUserRegNumber))
+                .findFirst()
+                .orElse(null);
+
+        return WorkflowLetterResponseDto.builder()
+                .letterId(letter.getId())
+                .title(letter.getTitle())
+                .eventDate(letter.getEventDate())
+                .eventTime(letter.getEventTime())
+                .eventPlace(letter.getEventPlace())
+                .description(letter.getDescription())
+                .globalStatus(letter.getGlobalStatus() != null ? letter.getGlobalStatus().name() : null)
+                .pdfPath(letter.getPdfPath())
+                .requesterName(letter.getUser().getUserName())
+                .requesterRegNumber(letter.getUser().getRegNumber())
+                .currentStep(currentStep)
+                .myStep(myStep)
+                .steps(stepResponses)
+                .build();
+    }
+
+    private WorkflowStepResponseDto mapStep(WorkflowStep step) {
+        return WorkflowStepResponseDto.builder()
+                .id(step.getId())
+                .approverName(step.getUser().getUserName())
+                .approverRegNumber(step.getUser().getRegNumber())
+                .stepOrder(step.getStepOrder())
+                .status(step.getStatus().name())
+                .remarks(step.getRemarks())
+                .build();
+    }
 
     private List<User> resolveApprovers(List<ApproverDto> approverDtos) {
         List<ApproverDto> sortedApprovers = approverDtos.stream()

@@ -27,6 +27,11 @@ public class WorkflowController {
         return ResponseEntity.ok(workflowService.getMyWorkflows());
     }
 
+    @GetMapping("/current-letters")
+    public ResponseEntity<List<WorkflowLetterResponseDto>> getMyCurrentStepLetters() {
+        return ResponseEntity.ok(workflowService.getMyCurrentStepLetters());
+    }
+
     @GetMapping("/letters/{letterId}")
     public ResponseEntity<WorkflowLetterResponseDto> getWorkflowByLetter(@PathVariable Long letterId) {
         return ResponseEntity.ok(workflowService.getWorkflowByLetterId(letterId));

@@ -21,7 +21,7 @@ public class WorkflowStep {
     private Letter letter;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false)
+    @JoinColumn(name = "user_reg_number", referencedColumnName = "reg_number", nullable = false)
     private User user;
 
     @Column(nullable = false)
