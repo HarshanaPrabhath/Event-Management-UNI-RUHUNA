@@ -4,6 +4,7 @@ import com.management.event.config.AuthenticatedUser;
 import com.management.event.dto.ApproverDto;
 import com.management.event.dto.ApproverSummaryResponseDto;
 import com.management.event.dto.LetterPlaceRequestDto;
+import com.management.event.dto.LetterRejectRequestDto;
 import com.management.event.dto.LetterToApproveResponseDto;
 import com.management.event.dto.SenderSummaryResponseDto;
 import com.management.event.entity.Letter;
@@ -63,9 +64,14 @@ public class LetterService {
     public List<LetterToApproveResponseDto> getLettersToApprove() {
         User currentUser = authenticatedUser.getAuthenticatedUser();
 
-        return workflowStepRepository
-                .findByUserRegNumberAndStatusOrderByLetterIdDesc(currentUser.getRegNumber(), StepStatus.CURRENT)
-                .stream()
+        List<WorkflowStep> pendingSteps = workflowStepRepository
+                .findByUserRegNumberAndStatusOrderByLetterIdDesc(currentUser.getRegNumber(), StepStatus.CURRENT);
+
+        if (pendingSteps.isEmpty()) {
+            throw new ApiException("You have no letters pending your approval");
+        }
+
+        return pendingSteps.stream()
                 .map(step -> {
                     List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(step.getLetter().getId());
                     return buildLetterToApproveResponse(step.getLetter(), steps);
@@ -112,10 +118,72 @@ public class LetterService {
         workflowStepRepository.saveAll(steps);
     }
 
+    @Transactional
+    public void rejectLetter(Long letterId, @Valid LetterRejectRequestDto request) {
+        User currentUser = authenticatedUser.getAuthenticatedUser();
+
+        List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(letterId);
+        if (steps.isEmpty()) {
+            throw new ResourceNotFoundException("Letter", "id", letterId);
+        }
+
+        WorkflowStep currentStep = steps.stream()
+                .filter(step -> step.getStatus() == StepStatus.CURRENT)
+                .findFirst()
+                .orElseThrow(() -> new ApiException("No pending workflow step found for this letter"));
+
+        if (!currentStep.getUser().getRegNumber().equals(currentUser.getRegNumber())) {
+            throw new ApiException("You are not the current approver for this letter");
+        }
+
+        currentStep.setStatus(StepStatus.REJECTED);
+        currentStep.getLetter().setGlobalStatus(LetterStatus.REJECTED);
+        currentStep.getLetter().setRejectionReason(request.getRejectionReason().trim());
+
+        workflowStepRepository.save(currentStep);
+        letterRepository.save(currentStep.getLetter());
+    }
+
+    @Transactional
+    public void approveLetter(Long letterId) {
+        User currentUser = authenticatedUser.getAuthenticatedUser();
+
+        List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(letterId);
+        if (steps.isEmpty()) {
+            throw new ResourceNotFoundException("Letter", "id", letterId);
+        }
+
+        WorkflowStep currentStep = steps.stream()
+                .filter(step -> step.getStatus() == StepStatus.CURRENT)
+                .findFirst()
+                .orElseThrow(() -> new ApiException("No pending workflow step found for this letter"));
+
+        if (!currentStep.getUser().getRegNumber().equals(currentUser.getRegNumber())) {
+            throw new ApiException("You are not the current approver for this letter");
+        }
+
+        currentStep.setStatus(StepStatus.APPROVED);
+
+        WorkflowStep nextStep = steps.stream()
+                .filter(step -> step.getStepOrder().equals(currentStep.getStepOrder() + 1))
+                .findFirst()
+                .orElse(null);
+
+        if (nextStep == null) {
+            currentStep.getLetter().setGlobalStatus(LetterStatus.APPROVED);
+        } else {
+            nextStep.setStatus(StepStatus.CURRENT);
+        }
+
+        workflowStepRepository.saveAll(steps);
+        letterRepository.save(currentStep.getLetter());
+    }
+
     private LetterToApproveResponseDto buildLetterToApproveResponse(Letter letter, List<WorkflowStep> steps) {
         LetterToApproveResponseDto response = modelMapper.map(letter, LetterToApproveResponseDto.class);
         response.setLetterId(letter.getId());
         response.setGlobalStatus(letter.getGlobalStatus() != null ? letter.getGlobalStatus().name() : null);
+        response.setRejectionReason(letter.getRejectionReason());
         response.setSender(SenderSummaryResponseDto.builder()
                 .name(letter.getUser().getUserName())
                 .regNumber(letter.getUser().getRegNumber())
@@ -127,12 +195,17 @@ public class LetterService {
                 .orElse(null);
 
         if (currentStep != null) {
+            response.setPreviousApprovers(steps.stream()
+                    .filter(step -> step.getStepOrder() < currentStep.getStepOrder())
+                    .map(this::mapApprover)
+                    .toList());
             response.setCurrentApprover(mapApprover(currentStep));
             response.setNextApprovers(steps.stream()
                     .filter(step -> step.getStepOrder() > currentStep.getStepOrder())
                     .map(this::mapApprover)
                     .toList());
         } else {
+            response.setPreviousApprovers(steps.stream().map(this::mapApprover).toList());
             response.setCurrentApprover(null);
             response.setNextApprovers(List.of());
         }

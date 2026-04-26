@@ -38,4 +38,7 @@ public class Letter {
 
     @Enumerated(EnumType.STRING)
     private LetterStatus globalStatus;
+
+    @Column(length = 1000)
+    private String rejectionReason;
 }

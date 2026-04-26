@@ -22,7 +22,9 @@ public class LetterToApproveResponseDto {
     private String eventPlace;
     private String globalStatus;
     private String pdfPath;
+    private String rejectionReason;
     private SenderSummaryResponseDto sender;
+    private List<ApproverSummaryResponseDto> previousApprovers;
     private ApproverSummaryResponseDto currentApprover;
     private List<ApproverSummaryResponseDto> nextApprovers;
 }
