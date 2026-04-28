@@ -6,4 +6,67 @@ INSERT INTO places (place_name, department, capacity) VALUES
 ('LH210', 'ET', 500),
 ('BST12', 'BST', 120),
 ('Ground', 'All', NULL),
-('King Road', 'All
+('King Road', 'All',Null);
+
+INSERT INTO users (reg_number, user_name, email, password)
+SELECT 'HID001', 'head', 'head@example.com', password
+FROM users WHERE reg_number = 'ADMIN/001';
+
+INSERT INTO user_role (user_reg_number, role_id)
+SELECT 'HID001', role_id FROM role WHERE role_name = 'ROLE_USER';
+
+INSERT INTO letters (user_reg_number, title, event_date, event_time, event_place, description, pdf_path, global_status, rejection_reason)
+VALUES ('ADMIN/001', 'ICT Department Workshop', '2026-05-15', '10:00:00', 'Lab11', 'Workshop on AI and ML', 'uploads/letters/test2.pdf', 'PENDING', NULL);
+
+SET @lid = LAST_INSERT_ID();
+INSERT INTO workflow_steps (letter_id, user_reg_number, step_order, status, remarks)
+VALUES (@lid, 'LC2001', 1, 'APPROVED', 'Looks good, forwarding to HID'),
+       (@lid, 'HID001', 2, 'CURRENT', NULL),
+       (@lid, 'DID100', 3, 'WAITING', NULL);
+
+   INSERT INTO letters (user_reg_number, title, event_date, event_time, event_place, description, pdf_path, global_status, rejection_reason)
+   VALUES ('ADMIN/001', 'Engineering Faculty Seminar', '2026-05-20', '14:00:00', 'Auditorium', 'Seminar on renewable energy', 'uploads/letters/test3.pdf', 'PENDING', NULL);
+
+   SET @lid = LAST_INSERT_ID();
+   INSERT INTO workflow_steps (letter_id, user_reg_number, step_order, status, remarks)
+   VALUES (@lid, 'LC2001', 1, 'APPROVED', 'Approved by lecturer'),
+          (@lid, 'HID001', 2, 'APPROVED', 'Approved by HID'),
+          (@lid, 'DID100', 3, 'CURRENT', NULL);
+
+INSERT INTO letters (user_reg_number, title, event_date, event_time, event_place, description, pdf_path, global_status, rejection_reason)
+VALUES ('ADMIN/001', 'Freshers Day Celebration', '2026-04-25', '08:00:00', 'Ground', 'Welcome event for new students', 'uploads/letters/test4.pdf', 'APPROVED', NULL);
+
+SET @lid = LAST_INSERT_ID();
+INSERT INTO workflow_steps (letter_id, user_reg_number, step_order, status, remarks)
+VALUES (@lid, 'LC2001', 1, 'APPROVED', 'Approved'),
+       (@lid, 'HID001', 2, 'APPROVED', 'Approved'),
+       (@lid, 'DID100', 3, 'APPROVED', 'Fully approved');
+
+INSERT INTO letters (user_reg_number, title, event_date, event_time, event_place, description, pdf_path, global_status, rejection_reason)
+VALUES ('ADMIN/001', 'Unofficial Gathering Request', '2026-05-01', '18:00:00', 'King Road', 'Informal student gathering', 'uploads/letters/test5.pdf', 'REJECTED', 'Event details are incomplete');
+
+SET @lid = LAST_INSERT_ID();
+INSERT INTO workflow_steps (letter_id, user_reg_number, step_order, status, remarks)
+VALUES (@lid, 'LC2001', 1, 'REJECTED', 'Incomplete event details'),
+       (@lid, 'HID001', 2, 'WAITING', NULL),
+       (@lid, 'DID100', 3, 'WAITING', NULL);
+
+
+
+INSERT INTO letters (user_reg_number, title, event_date, event_time, event_place, description, pdf_path, global_status, rejection_reason)
+VALUES ('ADMIN/001', 'Budget Exceeded Event', '2026-05-08', '11:00:00', 'NBLLT', 'Event requires excess funding', 'uploads/letters/test6.pdf', 'REJECTED', 'Budget details are missing. Please update and resubmit.');
+
+SET @lid = LAST_INSERT_ID();
+INSERT INTO workflow_steps (letter_id, user_reg_number, step_order, status, remarks)
+VALUES (@lid, 'LC2001', 1, 'APPROVED', 'Forwarded to HID'),
+       (@lid, 'HID001', 2, 'REJECTED', 'Budget details are missing. Please update and resubmit.'),
+       (@lid, 'DID100', 3, 'WAITING', NULL);
+
+INSERT INTO letters (user_reg_number, title, event_date, event_time, event_place, description, pdf_path, global_status, rejection_reason)
+VALUES ('ADMIN/001', 'Inter-University Sports Meet', '2026-06-01', '07:00:00', 'Ground', 'Large scale inter-university event', 'uploads/letters/test7.pdf', 'REJECTED', 'Scheduling conflict with exam period');
+
+SET @lid = LAST_INSERT_ID();
+INSERT INTO workflow_steps (letter_id, user_reg_number, step_order, status, remarks)
+VALUES (@lid, 'LC2001', 1, 'APPROVED', 'Approved'),
+       (@lid, 'HID001', 2, 'APPROVED', 'Approved by HID'),
+       (@lid, 'DID100', 3, 'REJECTED', 'Scheduling conflict with exam period');
