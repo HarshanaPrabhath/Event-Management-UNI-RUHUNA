@@ -14,7 +14,9 @@ import com.management.event.entity.User;
 import com.management.event.entity.WorkflowStep;
 import com.management.event.exception.ApiException;
 import com.management.event.exception.ResourceNotFoundException;
+import com.management.event.entity.Place;
 import com.management.event.repository.LetterRepository;
+import com.management.event.repository.PlaceRepository;
 import com.management.event.repository.UserRepository;
 import com.management.event.repository.WorkflowStepRepository;
 import jakarta.validation.Valid;
@@ -45,6 +47,7 @@ public class LetterService {
     private final UserRepository userRepository;
     private final AuthenticatedUser authenticatedUser;
     private final WorkflowStepRepository workflowStepRepository;
+    private final PlaceRepository placeRepository;
     private final ModelMapper modelMapper;
 
     @Transactional(readOnly = true)
@@ -128,14 +131,50 @@ public class LetterService {
         }
 
         User requester = authenticatedUser.getAuthenticatedUser();
+
+
         List<User> approvers = resolveApprovers(letterPlaceRequestDto.getApprovers());
+
+        List<User> finalApprovers = new ArrayList<>();
+
+
+        if (StringUtils.hasText(letterPlaceRequestDto.getPlaceName())) {
+
+            Place place = placeRepository.findByPlaceName(letterPlaceRequestDto.getPlaceName())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Place", "name", letterPlaceRequestDto.getPlaceName()));
+
+            if (place.getResponsiblePerson() == null) {
+                throw new ApiException("Selected place has no responsible person");
+            }
+
+            User placeResponsiblePerson = place.getResponsiblePerson();
+
+            // Add place responsible person FIRST
+            finalApprovers.add(placeResponsiblePerson);
+
+            // Add manual approvers (avoid duplicate)
+            for (User approver : approvers) {
+                if (!approver.getRegNumber().equals(placeResponsiblePerson.getRegNumber())) {
+                    finalApprovers.add(approver);
+                }
+            }
+
+        } else {
+            finalApprovers = approvers;
+        }
+
+
+        if (finalApprovers.isEmpty()) {
+            throw new ApiException("At least one approver is required");
+        }
 
         Letter letter = new Letter();
         letter.setUser(requester);
         letter.setTitle(letterPlaceRequestDto.getEventName());
         letter.setEventDate(letterPlaceRequestDto.getEventDate());
         letter.setEventTime(letterPlaceRequestDto.getEventTime());
-        letter.setEventPlace(letterPlaceRequestDto.getEventPlace());
+        letter.setEventPlace(letterPlaceRequestDto.getPlaceName());
         letter.setDescription(letterPlaceRequestDto.getDescription());
         letter.setPdfPath(storePdf(letterPlaceRequestDto.getLetterPdf()));
         letter.setGlobalStatus(LetterStatus.PENDING);
@@ -144,10 +183,10 @@ public class LetterService {
 
         List<WorkflowStep> steps = new ArrayList<>();
 
-        for (int i = 0; i < approvers.size(); i++) {
+        for (int i = 0; i < finalApprovers.size(); i++) {
             WorkflowStep step = new WorkflowStep();
             step.setLetter(savedLetter);
-            step.setUser(approvers.get(i));
+            step.setUser(finalApprovers.get(i));
             step.setStepOrder(i + 1);
             step.setStatus(i == 0 ? StepStatus.CURRENT : StepStatus.WAITING);
             steps.add(step);

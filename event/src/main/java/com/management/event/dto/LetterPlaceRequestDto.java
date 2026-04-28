@@ -21,6 +21,8 @@ public class LetterPlaceRequestDto {
 
     private String eventPlace;
 
+    private String placeName;
+
     private String description;
 
     private MultipartFile letterPdf;
