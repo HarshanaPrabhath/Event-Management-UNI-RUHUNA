@@ -1,0 +1,9 @@
+INSERT INTO places (place_name, department, capacity) VALUES
+('Auditorium', 'All', 450),
+('Lab11', 'ICT', 80),
+('Lab12', 'ICT', 110),
+('NBLLT', 'ET', 200),
+('LH210', 'ET', 500),
+('BST12', 'BST', 120),
+('Ground', 'All', NULL),
+('King Road', 'All

@@ -30,6 +30,11 @@ public class LetterController {
         return ResponseEntity.ok(letterService.getMyLetters());
     }
 
+    @GetMapping("/rejected-by-me")
+    public ResponseEntity<List<LetterToApproveResponseDto>> getRejectedByMe() {
+        return ResponseEntity.ok(letterService.getRejectedByMe());
+    }
+
     @GetMapping("/approved-by-me")
     public ResponseEntity<List<LetterToApproveResponseDto>> getApprovedByMe() {
         return ResponseEntity.ok(letterService.getApprovedByMe());

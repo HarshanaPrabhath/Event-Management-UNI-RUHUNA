@@ -80,6 +80,25 @@ public class LetterService {
     }
 
     @Transactional(readOnly = true)
+    public List<LetterToApproveResponseDto> getRejectedByMe() {
+        User currentUser = authenticatedUser.getAuthenticatedUser();
+
+        List<WorkflowStep> rejectedSteps = workflowStepRepository
+                .findByUserRegNumberAndStatusOrderByLetterIdDesc(currentUser.getRegNumber(), StepStatus.REJECTED);
+
+        if (rejectedSteps.isEmpty()) {
+            throw new ApiException("You have not rejected any letters yet");
+        }
+
+        return rejectedSteps.stream()
+                .map(step -> {
+                    List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(step.getLetter().getId());
+                    return buildLetterToApproveResponse(step.getLetter(), steps);
+                })
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public List<LetterToApproveResponseDto> getLettersToApprove() {
         User currentUser = authenticatedUser.getAuthenticatedUser();
 
