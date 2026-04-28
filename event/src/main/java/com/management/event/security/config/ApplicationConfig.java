@@ -1,8 +1,10 @@
 package com.management.event.security.config;
 
 import com.management.event.entity.AppRole;
+import com.management.event.entity.Place;
 import com.management.event.entity.Role;
 import com.management.event.entity.User;
+import com.management.event.repository.PlaceRepository;
 import com.management.event.repository.RoleRepository;
 import com.management.event.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -78,7 +80,8 @@ public class ApplicationConfig {
     @Bean
     public CommandLineRunner initUsers(UserRepository userRepository,
                                        RoleRepository roleRepository,
-                                       PasswordEncoder passwordEncoder) {
+                                       PasswordEncoder passwordEncoder,
+                                       PlaceRepository placeRepository) {
         return args -> {
             for (AppRole appRole : AppRole.values()) {
                 if (roleRepository.findByRoleName(appRole).isEmpty()) {
@@ -131,7 +134,75 @@ public class ApplicationConfig {
                 userRepository.save(dean);
             }
 
-            System.out.println("Default roles and users initialized (if missing).");
+            if (userRepository.findByRegNumber("HODICT").isEmpty()) {
+                User hodict = new User();
+                hodict.setUserName("hodict");
+                hodict.setEmail("hodict@example.com");
+                hodict.setRegNumber("HODICT");
+                hodict.setPassword(passwordEncoder.encode("1234"));
+                hodict.setRoles(new HashSet<>(List.of(userRole)));
+                userRepository.save(hodict);
+            }
+
+            if (userRepository.findByRegNumber("ET-TO1").isEmpty()) {
+                User etTo = new User();
+                etTo.setUserName("et-to");
+                etTo.setEmail("et.to@example.com");
+                etTo.setRegNumber("ET-TO1");
+                etTo.setPassword(passwordEncoder.encode("1234"));
+                etTo.setRoles(new HashSet<>(List.of(userRole)));
+                userRepository.save(etTo);
+            }
+
+            if (userRepository.findByRegNumber("ICT-TO2").isEmpty()) {
+                User ictTo = new User();
+                ictTo.setUserName("ict-to");
+                ictTo.setEmail("ict.to@example.com");
+                ictTo.setRegNumber("ICT-TO2");
+                ictTo.setPassword(passwordEncoder.encode("1234"));
+                ictTo.setRoles(new HashSet<>(List.of(userRole)));
+                userRepository.save(ictTo);
+            }
+
+            if (userRepository.findByRegNumber("BST-TO2").isEmpty()) {
+                User bstTo = new User();
+                bstTo.setUserName("bst-to");
+                bstTo.setEmail("bst.to@example.com");
+                bstTo.setRegNumber("BST-TO2");
+                bstTo.setPassword(passwordEncoder.encode("1234"));
+                bstTo.setRoles(new HashSet<>(List.of(userRole)));
+                userRepository.save(bstTo);
+            }
+
+            if (userRepository.findByRegNumber("D-OFFICE-01").isEmpty()) {
+                User dOffice = new User();
+                dOffice.setUserName("d-office");
+                dOffice.setEmail("d.office@example.com");
+                dOffice.setRegNumber("D-OFFICE-01");
+                dOffice.setPassword(passwordEncoder.encode("1234"));
+                dOffice.setRoles(new HashSet<>(List.of(userRole)));
+                userRepository.save(dOffice);
+            }
+
+            if (placeRepository.count() == 0) {
+                User etTo    = userRepository.findByRegNumber("ET-TO1").orElseThrow();
+                User ictTo   = userRepository.findByRegNumber("ICT-TO2").orElseThrow();
+                User bstTo   = userRepository.findByRegNumber("BST-TO2").orElseThrow();
+                User dOffice = userRepository.findByRegNumber("D-OFFICE-01").orElseThrow();
+
+                placeRepository.saveAll(List.of(
+                        new Place(null, "Auditorium", "All",  450,  dOffice),
+                        new Place(null, "Lab11",      "ICT",  80,   ictTo),
+                        new Place(null, "Lab12",      "ICT",  110,  ictTo),
+                        new Place(null, "NBLLT",      "ET",   200,  etTo),
+                        new Place(null, "LH210",      "ET",   500,  etTo),
+                        new Place(null, "BST12",      "BST",  120,  bstTo),
+                        new Place(null, "Ground",     "All",  null, dOffice),
+                        new Place(null, "King Road",  "All",  null, dOffice)
+                ));
+            }
+
+            System.out.println("Default roles, users, and places initialized (if missing).");
         };
     }
 }
