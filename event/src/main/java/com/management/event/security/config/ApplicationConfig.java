@@ -1,9 +1,15 @@
 package com.management.event.security.config;
 
 import com.management.event.entity.AppRole;
+import com.management.event.entity.CalendarEvent;
+import com.management.event.entity.CalendarEventStatus;
+import com.management.event.entity.Letter;
+import com.management.event.entity.LetterStatus;
 import com.management.event.entity.Place;
 import com.management.event.entity.Role;
 import com.management.event.entity.User;
+import com.management.event.repository.CalendarEventRepository;
+import com.management.event.repository.LetterRepository;
 import com.management.event.repository.PlaceRepository;
 import com.management.event.repository.RoleRepository;
 import com.management.event.repository.UserRepository;
@@ -27,6 +33,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 
 @Configuration
 @RequiredArgsConstructor
@@ -61,6 +68,7 @@ public class ApplicationConfig {
                         .requestMatchers(
                                 "/api/auth/signin",
                                 "/api/auth/register",
+                                "/api/calendar/**",
                                 "/api/public/**",
                                 "/images/**",
                                 "/uploads/**"
@@ -81,7 +89,9 @@ public class ApplicationConfig {
     public CommandLineRunner initUsers(UserRepository userRepository,
                                        RoleRepository roleRepository,
                                        PasswordEncoder passwordEncoder,
-                                       PlaceRepository placeRepository) {
+                                       PlaceRepository placeRepository,
+                                       LetterRepository letterRepository,
+                                       CalendarEventRepository calendarEventRepository) {
         return args -> {
             for (AppRole appRole : AppRole.values()) {
                 if (roleRepository.findByRoleName(appRole).isEmpty()) {
@@ -202,7 +212,113 @@ public class ApplicationConfig {
                 ));
             }
 
+            // Seed 3 calendar events for May 2026 (idempotent).
+            User admin = userRepository.findByRegNumber("ADMIN/001").orElseThrow();
+
+            seedApprovedCalendarEvent(
+                    "May 2026 Career Guidance",
+                    "Career guidance session for undergraduates.",
+                    java.time.LocalDate.of(2026, 5, 5),
+                    java.time.LocalTime.of(9, 0),
+                    java.time.LocalTime.of(11, 0),
+                    "Auditorium",
+                    admin,
+                    placeRepository,
+                    letterRepository,
+                    calendarEventRepository
+            );
+
+            seedApprovedCalendarEvent(
+                    "May 2026 Coding Workshop",
+                    "Hands-on coding workshop.",
+                    java.time.LocalDate.of(2026, 5, 12),
+                    java.time.LocalTime.of(13, 30),
+                    java.time.LocalTime.of(16, 30),
+                    "Lab12",
+                    admin,
+                    placeRepository,
+                    letterRepository,
+                    calendarEventRepository
+            );
+
+            seedApprovedCalendarEvent(
+                    "May 2026 Department Seminar",
+                    "Monthly department seminar.",
+                    java.time.LocalDate.of(2026, 5, 28),
+                    java.time.LocalTime.of(16, 0),
+                    java.time.LocalTime.of(18, 0),
+                    "NBLLT",
+                    admin,
+                    placeRepository,
+                    letterRepository,
+                    calendarEventRepository
+            );
+
             System.out.println("Default roles, users, and places initialized (if missing).");
         };
+    }
+
+    private static void seedApprovedCalendarEvent(
+            String title,
+            String description,
+            java.time.LocalDate date,
+            java.time.LocalTime time,
+            java.time.LocalTime endTime,
+            String placeName,
+            User owner,
+            PlaceRepository placeRepository,
+            LetterRepository letterRepository,
+            CalendarEventRepository calendarEventRepository
+    ) {
+        Optional<Letter> existingLetter = letterRepository.findByTitleAndEventDateAndEventTimeAndEventPlace(
+                title, date, time, placeName
+        );
+
+        Letter letter = existingLetter.orElseGet(() -> {
+            Letter l = new Letter();
+            l.setUser(owner);
+            l.setTitle(title);
+            l.setDescription(description);
+            l.setEventDate(date);
+            l.setEventTime(time);
+            l.setEventEndTime(endTime);
+            l.setEventPlace(placeName);
+            l.setPdfPath("uploads/letters/seed-" + title.toLowerCase().replace(' ', '-') + ".pdf");
+            l.setGlobalStatus(LetterStatus.APPROVED);
+            l.setRejectionReason(null);
+            return letterRepository.save(l);
+        });
+
+        // Ensure legacy letter rows get end time for correct conflict detection.
+        if (letter.getEventEndTime() == null) {
+            letter.setEventEndTime(endTime);
+            letterRepository.save(letter);
+        }
+
+        CalendarEvent existingEvent = calendarEventRepository.findByLetterId(letter.getId()).orElse(null);
+        if (existingEvent == null) {
+            CalendarEvent event = new CalendarEvent();
+            event.setLetter(letter);
+            event.setTitle(title);
+            event.setDescription(description);
+            event.setEventDate(date);
+            event.setEventTime(time);
+            event.setEndTime(endTime);
+            event.setPlaceName(placeName);
+            event.setPlace(placeRepository.findByPlaceName(placeName).orElse(null));
+            event.setStatus(CalendarEventStatus.APPROVED);
+            calendarEventRepository.save(event);
+        } else {
+            // Keep seed data consistent if the letter exists but event fields changed.
+            existingEvent.setTitle(title);
+            existingEvent.setDescription(description);
+            existingEvent.setEventDate(date);
+            existingEvent.setEventTime(time);
+            existingEvent.setEndTime(endTime);
+            existingEvent.setPlaceName(placeName);
+            existingEvent.setPlace(placeRepository.findByPlaceName(placeName).orElse(null));
+            existingEvent.setStatus(CalendarEventStatus.APPROVED);
+            calendarEventRepository.save(existingEvent);
+        }
     }
 }

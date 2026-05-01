@@ -4,6 +4,7 @@ import com.management.event.config.AuthenticatedUser;
 import com.management.event.dto.ApproverDto;
 import com.management.event.dto.ApproverSummaryResponseDto;
 import com.management.event.dto.LetterPlaceRequestDto;
+import com.management.event.dto.LetterApproveRequestDto;
 import com.management.event.dto.LetterRejectRequestDto;
 import com.management.event.dto.LetterToApproveResponseDto;
 import com.management.event.dto.SenderSummaryResponseDto;
@@ -15,6 +16,7 @@ import com.management.event.entity.WorkflowStep;
 import com.management.event.exception.ApiException;
 import com.management.event.exception.ResourceNotFoundException;
 import com.management.event.entity.Place;
+import com.management.event.service.CalendarEventService;
 import com.management.event.repository.LetterRepository;
 import com.management.event.repository.PlaceRepository;
 import com.management.event.repository.UserRepository;
@@ -48,6 +50,7 @@ public class LetterService {
     private final AuthenticatedUser authenticatedUser;
     private final WorkflowStepRepository workflowStepRepository;
     private final PlaceRepository placeRepository;
+    private final CalendarEventService calendarEventService;
     private final ModelMapper modelMapper;
 
     @Transactional(readOnly = true)
@@ -58,7 +61,7 @@ public class LetterService {
                 .stream()
                 .map(letter -> {
                     List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(letter.getId());
-                    return buildLetterToApproveResponse(letter, steps);
+                    return buildLetterToApproveResponse(letter, steps, currentUser.getRegNumber());
                 })
                 .toList();
     }
@@ -77,7 +80,7 @@ public class LetterService {
         return approvedSteps.stream()
                 .map(step -> {
                     List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(step.getLetter().getId());
-                    return buildLetterToApproveResponse(step.getLetter(), steps);
+                    return buildLetterToApproveResponse(step.getLetter(), steps, currentUser.getRegNumber());
                 })
                 .toList();
     }
@@ -96,7 +99,7 @@ public class LetterService {
         return rejectedSteps.stream()
                 .map(step -> {
                     List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(step.getLetter().getId());
-                    return buildLetterToApproveResponse(step.getLetter(), steps);
+                    return buildLetterToApproveResponse(step.getLetter(), steps, currentUser.getRegNumber());
                 })
                 .toList();
     }
@@ -115,7 +118,7 @@ public class LetterService {
         return pendingSteps.stream()
                 .map(step -> {
                     List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(step.getLetter().getId());
-                    return buildLetterToApproveResponse(step.getLetter(), steps);
+                    return buildLetterToApproveResponse(step.getLetter(), steps, currentUser.getRegNumber());
                 })
                 .toList();
     }
@@ -129,6 +132,11 @@ public class LetterService {
         if (letterPlaceRequestDto.getApprovers() == null || letterPlaceRequestDto.getApprovers().isEmpty()) {
             throw new ApiException("At least one approver is required");
         }
+        if (letterPlaceRequestDto.getEventTime() != null
+                && letterPlaceRequestDto.getEventEndTime() != null
+                && !letterPlaceRequestDto.getEventTime().isBefore(letterPlaceRequestDto.getEventEndTime())) {
+            throw new ApiException("eventEndTime must be after eventTime");
+        }
 
         User requester = authenticatedUser.getAuthenticatedUser();
 
@@ -139,6 +147,18 @@ public class LetterService {
 
 
         if (StringUtils.hasText(letterPlaceRequestDto.getPlaceName())) {
+            // Block placing a letter if the slot is already booked (approved or pending booking).
+            if (letterPlaceRequestDto.getEventDate() != null
+                    && letterPlaceRequestDto.getEventTime() != null
+                    && letterPlaceRequestDto.getEventEndTime() != null) {
+                calendarEventService.assertSlotAvailableOrThrow(
+                        letterPlaceRequestDto.getPlaceName(),
+                        letterPlaceRequestDto.getEventDate(),
+                        letterPlaceRequestDto.getEventTime(),
+                        letterPlaceRequestDto.getEventEndTime(),
+                        null
+                );
+            }
 
             Place place = placeRepository.findByPlaceName(letterPlaceRequestDto.getPlaceName())
                     .orElseThrow(() -> new ResourceNotFoundException(
@@ -174,6 +194,7 @@ public class LetterService {
         letter.setTitle(letterPlaceRequestDto.getEventName());
         letter.setEventDate(letterPlaceRequestDto.getEventDate());
         letter.setEventTime(letterPlaceRequestDto.getEventTime());
+        letter.setEventEndTime(letterPlaceRequestDto.getEventEndTime());
         letter.setEventPlace(letterPlaceRequestDto.getPlaceName());
         letter.setDescription(letterPlaceRequestDto.getDescription());
         letter.setPdfPath(storePdf(letterPlaceRequestDto.getLetterPdf()));
@@ -189,6 +210,9 @@ public class LetterService {
             step.setUser(finalApprovers.get(i));
             step.setStepOrder(i + 1);
             step.setStatus(i == 0 ? StepStatus.CURRENT : StepStatus.WAITING);
+            if (i == 0) {
+                step.setAssignedAt(java.time.LocalDateTime.now());
+            }
             steps.add(step);
         }
 
@@ -213,16 +237,28 @@ public class LetterService {
             throw new ApiException("You are not the current approver for this letter");
         }
 
+        String rejectionText = firstNonBlank(request.getRejectionReason(), request.getRemarks());
+        if (rejectionText != null) {
+            rejectionText = rejectionText.trim();
+            if (rejectionText.isBlank()) {
+                rejectionText = null;
+            }
+        }
+
         currentStep.setStatus(StepStatus.REJECTED);
         currentStep.getLetter().setGlobalStatus(LetterStatus.REJECTED);
-        currentStep.getLetter().setRejectionReason(request.getRejectionReason().trim());
+        currentStep.setRemarks(rejectionText);
+        currentStep.getLetter().setRejectionReason(rejectionText);
+        currentStep.setActedAt(java.time.LocalDateTime.now());
 
         workflowStepRepository.save(currentStep);
         letterRepository.save(currentStep.getLetter());
+        // If the place had a pending booking, remove it when the letter is rejected.
+        calendarEventService.deleteByLetterId(letterId);
     }
 
     @Transactional
-    public void approveLetter(Long letterId) {
+    public void approveLetter(Long letterId, LetterApproveRequestDto request) {
         User currentUser = authenticatedUser.getAuthenticatedUser();
 
         List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(letterId);
@@ -239,32 +275,80 @@ public class LetterService {
             throw new ApiException("You are not the current approver for this letter");
         }
 
+        Letter letter = currentStep.getLetter();
+
+        String remarks = request != null ? request.getRemarks() : null;
+        if (remarks != null) {
+            remarks = remarks.trim();
+            if (remarks.isBlank()) {
+                remarks = null;
+            }
+        }
+
         currentStep.setStatus(StepStatus.APPROVED);
+        currentStep.setRemarks(remarks);
+        currentStep.setActedAt(java.time.LocalDateTime.now());
 
         WorkflowStep nextStep = steps.stream()
                 .filter(step -> step.getStepOrder().equals(currentStep.getStepOrder() + 1))
                 .findFirst()
                 .orElse(null);
 
+        // If this is the place responsible person's approval (step 1 when a place was selected),
+        // create a PENDING_BOOKING calendar reservation and update global status.
+        boolean isPlaceResponsibleApproval = currentStep.getStepOrder() == 1 && StringUtils.hasText(letter.getEventPlace());
+        if (isPlaceResponsibleApproval) {
+            calendarEventService.ensurePendingBookingForLetterOrThrow(letter);
+            letter.setGlobalStatus(LetterStatus.PENDING_BOOKING);
+        }
+
         if (nextStep == null) {
-            currentStep.getLetter().setGlobalStatus(LetterStatus.APPROVED);
+            // Final approval: mark letter approved and save/upgrade calendar event to APPROVED.
+            calendarEventService.markApprovedForLetterOrThrow(letter);
+            letter.setGlobalStatus(LetterStatus.APPROVED);
+            letter.setApprovalNote(remarks);
         } else {
             nextStep.setStatus(StepStatus.CURRENT);
+            nextStep.setAssignedAt(java.time.LocalDateTime.now());
         }
 
         workflowStepRepository.saveAll(steps);
-        letterRepository.save(currentStep.getLetter());
+        letterRepository.save(letter);
     }
 
-    private LetterToApproveResponseDto buildLetterToApproveResponse(Letter letter, List<WorkflowStep> steps) {
+    private LetterToApproveResponseDto buildLetterToApproveResponse(Letter letter, List<WorkflowStep> steps, String currentUserRegNumber) {
         LetterToApproveResponseDto response = modelMapper.map(letter, LetterToApproveResponseDto.class);
         response.setLetterId(letter.getId());
         response.setGlobalStatus(letter.getGlobalStatus() != null ? letter.getGlobalStatus().name() : null);
         response.setRejectionReason(letter.getRejectionReason());
+        response.setApprovalNote(letter.getApprovalNote());
         response.setSender(SenderSummaryResponseDto.builder()
                 .name(letter.getUser().getUserName())
                 .regNumber(letter.getUser().getRegNumber())
                 .build());
+        response.setCreatedAt(letter.getCreatedAt());
+        response.setUpdatedAt(letter.getUpdatedAt());
+
+        // Convenience fields for UI.
+        WorkflowStep rejectedStep = steps.stream().filter(s -> s.getStatus() == StepStatus.REJECTED).findFirst().orElse(null);
+        if (rejectedStep != null) {
+            response.setFinalDecisionAt(rejectedStep.getActedAt());
+        } else if (letter.getGlobalStatus() == LetterStatus.APPROVED) {
+            java.time.LocalDateTime maxApprovedAt = steps.stream()
+                    .filter(s -> s.getStatus() == StepStatus.APPROVED && s.getActedAt() != null)
+                    .map(WorkflowStep::getActedAt)
+                    .max(java.time.LocalDateTime::compareTo)
+                    .orElse(null);
+            response.setFinalDecisionAt(maxApprovedAt);
+        } else {
+            response.setFinalDecisionAt(null);
+        }
+
+        WorkflowStep myStep = (currentUserRegNumber == null) ? null : steps.stream()
+                .filter(s -> s.getUser() != null && currentUserRegNumber.equals(s.getUser().getRegNumber()))
+                .findFirst()
+                .orElse(null);
+        response.setMyAction(myStep == null ? null : mapApprover(myStep));
 
         WorkflowStep currentStep = steps.stream()
                 .filter(step -> step.getStatus() == StepStatus.CURRENT)
@@ -296,7 +380,16 @@ public class LetterService {
                 .regNumber(step.getUser().getRegNumber())
                 .stepOrder(step.getStepOrder())
                 .status(step.getStatus().name())
+                .remarks(step.getRemarks())
+                .assignedAt(step.getAssignedAt())
+                .actedAt(step.getActedAt())
                 .build();
+    }
+
+    private static String firstNonBlank(String a, String b) {
+        if (a != null && !a.isBlank()) return a;
+        if (b != null && !b.isBlank()) return b;
+        return null;
     }
 
     private List<User> resolveApprovers(List<ApproverDto> approverDtos) {
