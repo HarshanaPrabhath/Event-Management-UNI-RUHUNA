@@ -5,6 +5,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "workflow_steps")
 @Data
@@ -32,4 +34,10 @@ public class WorkflowStep {
     private StepStatus status;
 
     private String remarks;
+
+    // When this step became CURRENT (nullable).
+    private LocalDateTime assignedAt;
+
+    // When this step was APPROVED/REJECTED (nullable).
+    private LocalDateTime actedAt;
 }

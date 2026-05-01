@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestControllerAdvice
@@ -38,6 +39,15 @@ public class MyGlobalExceptionHandler {
         String message = e.getMessage();
         ApiResponse apiResponse = new ApiResponse(message, false);
         return new ResponseEntity<>(apiResponse, HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(CalendarConflictException.class)
+    public ResponseEntity<Map<String, Object>> myCalendarConflictException(CalendarConflictException e) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("conflict", true);
+        response.put("message", e.getMessage());
+        response.put("conflicts", e.getConflicts() == null ? List.of() : e.getConflicts());
+        return new ResponseEntity<>(response, HttpStatus.CONFLICT);
     }
 }
 

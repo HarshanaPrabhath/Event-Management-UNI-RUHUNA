@@ -1,8 +1,7 @@
 package com.management.event.entity;
 
-public enum LetterStatus {
-    PENDING,
+public enum CalendarEventStatus {
     PENDING_BOOKING,
-    REJECTED,
     APPROVED
 }
+

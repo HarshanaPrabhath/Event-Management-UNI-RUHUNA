@@ -1,6 +1,7 @@
 package com.management.event.controller;
 
 import com.management.event.dto.LetterPlaceRequestDto;
+import com.management.event.dto.LetterApproveRequestDto;
 import com.management.event.dto.LetterRejectRequestDto;
 import com.management.event.dto.LetterToApproveResponseDto;
 import com.management.event.service.LetterService;
@@ -46,8 +47,9 @@ public class LetterController {
     }
 
     @PostMapping("/{letterId}/approve")
-    public ResponseEntity<String> approveLetter(@PathVariable Long letterId) {
-        letterService.approveLetter(letterId);
+    public ResponseEntity<String> approveLetter(@PathVariable Long letterId,
+                                                @RequestBody(required = false) LetterApproveRequestDto request) {
+        letterService.approveLetter(letterId, request);
         return ResponseEntity.ok("Letter approved successfully");
     }
 

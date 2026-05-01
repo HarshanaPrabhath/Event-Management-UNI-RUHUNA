@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 
 @Entity
@@ -29,6 +30,9 @@ public class Letter {
 
     private LocalTime eventTime;
 
+    // End time for the event (required for conflict detection on new requests).
+    private LocalTime eventEndTime;
+
     private String eventPlace;
 
     @Column(length = 2000)
@@ -41,4 +45,26 @@ public class Letter {
 
     @Column(length = 1000)
     private String rejectionReason;
+
+    // Optional note from the final approver to be shown to the letter placer.
+    @Column(length = 1000)
+    private String approvalNote;
+
+    @Column(nullable = false)
+    private LocalDateTime createdAt;
+
+    @Column(nullable = false)
+    private LocalDateTime updatedAt;
+
+    @PrePersist
+    void onCreate() {
+        LocalDateTime now = LocalDateTime.now();
+        createdAt = now;
+        updatedAt = now;
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
 }
