@@ -64,22 +64,22 @@ public class ApplicationConfig {
         http
                 .cors(Customizer.withDefaults())
                 .csrf(AbstractHttpConfigurer::disable)
-//                .authorizeHttpRequests(auth -> auth
-//                        .requestMatchers(
-//                                "/api/auth/signin",
-//                                "/api/auth/register",
-//                                "/api/calendar/**",
-//                                "/api/public/**",
-//                                "/images/**",
-//                                "/uploads/**"
-//                        )
-//                        .permitAll()
-//                        .anyRequest()
-//                        .authenticated()
-//                )
-        .authorizeHttpRequests(auth -> auth
-                .anyRequest().permitAll()
-        )
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(
+                                "/api/auth/signin",
+                                "/api/auth/register",
+                                "/api/calendar/**",
+                                "/api/public/**",
+                                "/images/**",
+                                "/uploads/**"
+                        )
+                        .permitAll()
+                        .anyRequest()
+                        .authenticated()
+                )
+//        .authorizeHttpRequests(auth -> auth
+//                .anyRequest().permitAll()
+//        )
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider())
                 .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
