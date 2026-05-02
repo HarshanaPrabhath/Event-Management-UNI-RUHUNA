@@ -23,3 +23,6 @@ app:
   jwt:
     secret: your_secret
     expiration-ms: 86400000
+
+file:
+  upload-dir: ../letters

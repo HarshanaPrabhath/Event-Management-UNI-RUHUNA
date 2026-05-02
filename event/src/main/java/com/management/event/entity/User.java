@@ -50,6 +50,10 @@ public class User {
     @Column(name = "password", nullable = false)
     private String password;
 
+    // Stored as a path under /uploads (e.g. uploads/signatures/REG-123.png)
+    @Column(name = "signature_image_path", length = 500)
+    private String signatureImagePath;
+
     @ToString.Exclude
     @ManyToMany(cascade = {CascadeType.MERGE, CascadeType.REFRESH}, fetch = FetchType.EAGER)
     @JoinTable(name = "user_role",

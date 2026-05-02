@@ -24,6 +24,7 @@ import com.management.event.repository.WorkflowStepRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -52,6 +53,10 @@ public class LetterService {
     private final PlaceRepository placeRepository;
     private final CalendarEventService calendarEventService;
     private final ModelMapper modelMapper;
+    private final PdfSigningService pdfSigningService;
+
+    @Value("${file.upload-dir}")
+    private String uploadDir;
 
     @Transactional(readOnly = true)
     public List<LetterToApproveResponseDto> getMyLetters() {
@@ -213,6 +218,10 @@ public class LetterService {
             if (i == 0) {
                 step.setAssignedAt(java.time.LocalDateTime.now());
             }
+            // If a place is selected, step 1 is the place responsible person (approve/forward only, no signature).
+            // Everyone else must sign+approve.
+            boolean isPlaceResponsibleFirstStep = (i == 0) && StringUtils.hasText(savedLetter.getEventPlace());
+            step.setRequiresSignature(!isPlaceResponsibleFirstStep);
             steps.add(step);
         }
 
@@ -273,6 +282,10 @@ public class LetterService {
 
         if (!currentStep.getUser().getRegNumber().equals(currentUser.getRegNumber())) {
             throw new ApiException("You are not the current approver for this letter");
+        }
+
+        if (currentStep.isRequiresSignature()) {
+            throw new ApiException("This approval requires a signature. Use the sign+approve endpoint.");
         }
 
         Letter letter = currentStep.getLetter();
@@ -433,7 +446,7 @@ public class LetterService {
             extension = originalFilename.substring(dotIndex);
         }
 
-        Path uploadDirectory = Path.of("uploads", "letters");
+        Path uploadDirectory = Path.of(uploadDir);
         Path targetFile = uploadDirectory.resolve(UUID.randomUUID() + extension);
 
         try {
@@ -446,5 +459,127 @@ public class LetterService {
         }
 
         return targetFile.toString().replace('\\', '/');
+    }
+
+    @Transactional
+    public String signLetter(Long letterId, com.management.event.dto.SignLetterRequestDto request) {
+        User currentUser = authenticatedUser.getAuthenticatedUser();
+
+        List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(letterId);
+        if (steps.isEmpty()) {
+            throw new ResourceNotFoundException("Letter", "id", letterId);
+        }
+        WorkflowStep currentStep = steps.stream()
+                .filter(step -> step.getStatus() == StepStatus.CURRENT)
+                .findFirst()
+                .orElseThrow(() -> new ApiException("No pending workflow step found for this letter"));
+
+        if (!currentStep.getUser().getRegNumber().equals(currentUser.getRegNumber())) {
+            throw new ApiException("You are not the current approver for this letter");
+        }
+        if (!currentStep.isRequiresSignature()) {
+            throw new ApiException("This step does not require a signature");
+        }
+
+        Letter letter = currentStep.getLetter();
+
+        // Stamps and updates the letter fields; persist the result.
+        String signedPath = pdfSigningService.stampSignature(letter, currentUser, request);
+        letterRepository.save(letter);
+        return signedPath;
+    }
+
+    @Transactional
+    public String signAndApproveCurrentStep(
+            Long letterId,
+            com.management.event.dto.SignApproveRequestDto request
+    ) {
+        User currentUser = authenticatedUser.getAuthenticatedUser();
+
+        List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(letterId);
+        if (steps.isEmpty()) {
+            throw new ResourceNotFoundException("Letter", "id", letterId);
+        }
+
+        WorkflowStep currentStep = steps.stream()
+                .filter(step -> step.getStatus() == StepStatus.CURRENT)
+                .findFirst()
+                .orElseThrow(() -> new ApiException("No pending workflow step found for this letter"));
+
+        if (!currentStep.getUser().getRegNumber().equals(currentUser.getRegNumber())) {
+            throw new ApiException("You are not the current approver for this letter");
+        }
+        if (!currentStep.isRequiresSignature()) {
+            throw new ApiException("This step does not require a signature. Use approve endpoint.");
+        }
+
+        // If client didn't send coordinates, try to use predefined step placement.
+        com.management.event.dto.SignLetterRequestDto effectiveReq =
+                (request == null) ? null : request.getSignature();
+        if (effectiveReq == null) effectiveReq = new com.management.event.dto.SignLetterRequestDto();
+
+        boolean hasCoords = effectiveReq.getX() != null && effectiveReq.getY() != null
+                && effectiveReq.getWidth() != null && effectiveReq.getHeight() != null;
+        boolean hasNorm = effectiveReq.getNx() != null && effectiveReq.getNy() != null
+                && effectiveReq.getNw() != null && effectiveReq.getNh() != null;
+
+//        if (!hasCoords && !hasNorm) {
+//            if (currentStep.getSignaturePageIndex() == null
+//                    || currentStep.getSignatureX() == null
+//                    || currentStep.getSignatureY() == null
+//                    || currentStep.getSignatureWidth() == null
+//                    || currentStep.getSignatureHeight() == null) {
+//                throw new ApiException("Signature coordinates are required for this step");
+//            }
+//            com.management.event.dto.SignLetterRequestDto r = new com.management.event.dto.SignLetterRequestDto();
+//            r.setPageIndex(currentStep.getSignaturePageIndex());
+//            r.setOrigin(currentStep.getSignatureOrigin() == null ? "TOP_LEFT" : currentStep.getSignatureOrigin());
+//            r.setX(currentStep.getSignatureX());
+//            r.setY(currentStep.getSignatureY());
+//            r.setWidth(currentStep.getSignatureWidth());
+//            r.setHeight(currentStep.getSignatureHeight());
+//            effectiveReq = r;
+//        }
+
+        Letter letter = currentStep.getLetter();
+        String signedPath = pdfSigningService.stampSignature(letter, currentUser, effectiveReq);
+        currentStep.setSignedAt(java.time.LocalDateTime.now());
+
+        String remarks = request != null ? request.getRemarks() : null;
+        if (remarks != null) {
+            remarks = remarks.trim();
+            if (remarks.isBlank()) {
+                remarks = null;
+            }
+        }
+
+        currentStep.setStatus(StepStatus.APPROVED);
+        currentStep.setRemarks(remarks);
+        currentStep.setActedAt(java.time.LocalDateTime.now());
+
+        WorkflowStep nextStep = steps.stream()
+                .filter(step -> step.getStepOrder().equals(currentStep.getStepOrder() + 1))
+                .findFirst()
+                .orElse(null);
+
+        // Place-responsible step never calls this, but keep behavior consistent if misconfigured.
+        boolean isPlaceResponsibleApproval = currentStep.getStepOrder() == 1 && StringUtils.hasText(letter.getEventPlace());
+        if (isPlaceResponsibleApproval) {
+            calendarEventService.ensurePendingBookingForLetterOrThrow(letter);
+            letter.setGlobalStatus(LetterStatus.PENDING_BOOKING);
+        }
+
+        if (nextStep == null) {
+            calendarEventService.markApprovedForLetterOrThrow(letter);
+            letter.setGlobalStatus(LetterStatus.APPROVED);
+            letter.setApprovalNote(remarks);
+        } else {
+            nextStep.setStatus(StepStatus.CURRENT);
+            nextStep.setAssignedAt(java.time.LocalDateTime.now());
+        }
+
+        workflowStepRepository.saveAll(steps);
+        letterRepository.save(letter);
+        return signedPath;
     }
 }
