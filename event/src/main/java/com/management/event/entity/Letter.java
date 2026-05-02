@@ -40,6 +40,14 @@ public class Letter {
 
     private String pdfPath;
 
+    // Optional output path after stamping a signature.
+    private String signedPdfPath;
+
+    // The regNumber of the user who stamped the signature.
+    private String signedByRegNumber;
+
+    private LocalDateTime signedAt;
+
     @Enumerated(EnumType.STRING)
     private LetterStatus globalStatus;
 

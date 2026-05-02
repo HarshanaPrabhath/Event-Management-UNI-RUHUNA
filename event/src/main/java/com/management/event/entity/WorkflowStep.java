@@ -35,6 +35,23 @@ public class WorkflowStep {
 
     private String remarks;
 
+    // If true, this approver must stamp their signature onto the letter PDF before approval is accepted.
+    @Column(nullable = false)
+    private boolean requiresSignature = true;
+
+    // Optional predefined placement for the signature (PDF points).
+    // If provided, the client can call sign endpoint without sending coordinates.
+//    private Integer signaturePageIndex;
+//    private Float signatureX;
+//    private Float signatureY;
+//    private Float signatureWidth;
+//    private Float signatureHeight;
+//    // "TOP_LEFT" (browser) or "BOTTOM_LEFT" (PDF).
+//    private String signatureOrigin;
+
+    // When this step's signature was applied (nullable).
+    private LocalDateTime signedAt;
+
     // When this step became CURRENT (nullable).
     private LocalDateTime assignedAt;
 
