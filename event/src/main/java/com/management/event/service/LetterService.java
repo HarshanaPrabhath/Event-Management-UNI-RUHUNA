@@ -58,6 +58,39 @@ public class LetterService {
     @Value("${file.upload-dir}")
     private String uploadDir;
 
+    /**
+     * Convert a stored filesystem path (absolute or relative) into a public URL path
+     * served by {@link com.management.event.config.WebMvcConfigure} at /uploads/**.
+     *
+     * We keep absolute paths in DB for server-side reading, but the frontend needs a URL.
+     */
+    private String toPublicUploadUrl(String storedPath) {
+        if (storedPath == null || storedPath.isBlank()) return null;
+        try {
+            Path base = Path.of(uploadDir);
+            Path p = Path.of(storedPath);
+
+            String rel;
+            if (base.isAbsolute() && p.isAbsolute() && p.startsWith(base)) {
+                rel = base.relativize(p).toString();
+            } else {
+                // Fall back to filename only (best-effort) if we can't reliably relativize.
+                Path fileName = p.getFileName();
+                rel = fileName == null ? storedPath : fileName.toString();
+            }
+            rel = rel.replace('\\', '/');
+            // Avoid double slashes when clients join paths.
+            while (rel.startsWith("/")) rel = rel.substring(1);
+            return "/uploads/" + rel;
+        } catch (Exception ignored) {
+            // If parsing fails, don't block the whole response; return best-effort URL.
+            String leaf = storedPath.replace('\\', '/');
+            int idx = leaf.lastIndexOf('/');
+            String name = (idx >= 0) ? leaf.substring(idx + 1) : leaf;
+            return "/uploads/" + name;
+        }
+    }
+
     @Transactional(readOnly = true)
     public List<LetterToApproveResponseDto> getMyLetters() {
         User currentUser = authenticatedUser.getAuthenticatedUser();
@@ -335,6 +368,8 @@ public class LetterService {
         response.setGlobalStatus(letter.getGlobalStatus() != null ? letter.getGlobalStatus().name() : null);
         response.setRejectionReason(letter.getRejectionReason());
         response.setApprovalNote(letter.getApprovalNote());
+        // Expose a URL for the latest PDF (signed if available), not a filesystem path.
+        response.setPdfPath(toPublicUploadUrl(firstNonBlank(letter.getSignedPdfPath(), letter.getPdfPath())));
         response.setSender(SenderSummaryResponseDto.builder()
                 .name(letter.getUser().getUserName())
                 .regNumber(letter.getUser().getRegNumber())
@@ -486,7 +521,7 @@ public class LetterService {
         // Stamps and updates the letter fields; persist the result.
         String signedPath = pdfSigningService.stampSignature(letter, currentUser, request);
         letterRepository.save(letter);
-        return signedPath;
+        return toPublicUploadUrl(signedPath);
     }
 
     @Transactional
@@ -580,6 +615,6 @@ public class LetterService {
 
         workflowStepRepository.saveAll(steps);
         letterRepository.save(letter);
-        return signedPath;
+        return toPublicUploadUrl(signedPath);
     }
 }
