@@ -25,4 +25,4 @@ app:
     expiration-ms: 86400000
 
 file:
-  upload-dir: ../letters
+  upload-dir: /app/uploads
