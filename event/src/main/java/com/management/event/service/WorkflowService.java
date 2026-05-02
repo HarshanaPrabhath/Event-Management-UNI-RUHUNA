@@ -27,6 +27,8 @@ public class WorkflowService {
     private final WorkflowStepRepository workflowStepRepository;
     private final LetterRepository letterRepository;
     private final AuthenticatedUser authenticatedUser;
+    private final EmailNotificationService emailNotificationService;
+    private final UploadUrlMapper uploadUrlMapper;
 
     @Transactional
     public WorkflowLetterResponseDto actOnWorkflow(Long letterId, @Valid WorkflowActionRequestDto request) {
@@ -59,6 +61,25 @@ public class WorkflowService {
 
         workflowStepRepository.saveAll(steps);
         letterRepository.save(currentStep.getLetter());
+
+        // Notifications (best-effort)
+        if ("reject".equals(action)) {
+            emailNotificationService.notifyRequesterRejected(
+                    currentStep.getLetter(),
+                    currentUser,
+                    request.getRemarks()
+            );
+        } else if ("approve".equals(action)) {
+            WorkflowStep next = steps.stream()
+                    .filter(s -> s.getStatus() == StepStatus.CURRENT)
+                    .findFirst()
+                    .orElse(null);
+            if (next == null) {
+                emailNotificationService.notifyRequesterApproved(currentStep.getLetter(), currentUser);
+            } else {
+                emailNotificationService.notifyApproverAssigned(currentStep.getLetter(), next.getUser());
+            }
+        }
 
         return buildWorkflowResponse(currentStep.getLetter(), steps, currentUser.getRegNumber());
     }
@@ -110,7 +131,7 @@ public class WorkflowService {
                 .eventPlace(letter.getEventPlace())
                 .description(letter.getDescription())
                 .globalStatus(letter.getGlobalStatus() != null ? letter.getGlobalStatus().name() : null)
-                .pdfPath(letter.getPdfPath())
+                .pdfPath(uploadUrlMapper.toPublicUrlPreferSigned(letter.getSignedPdfPath(), letter.getPdfPath()))
                 .requesterName(letter.getUser().getUserName())
                 .requesterRegNumber(letter.getUser().getRegNumber())
                 .currentStep(currentStep)

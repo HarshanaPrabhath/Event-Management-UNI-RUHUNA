@@ -23,6 +23,10 @@ app:
   jwt:
     secret: your_secret
     expiration-ms: 86400000
+  notifications:
+    email:
+      enabled: ${APP_NOTIFICATIONS_EMAIL_ENABLED:false}
+      from: ${APP_NOTIFICATIONS_EMAIL_FROM:}
 
 file:
   upload-dir: /app/uploads

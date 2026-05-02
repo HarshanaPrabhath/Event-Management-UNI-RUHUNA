@@ -25,7 +25,7 @@ public class PlaceService {
         List<Place> places = placeRepository.findAll();
 
         if (places.isEmpty()) {
-            throw new ApiException("No places found");
+            return List.of();
         }
 
         return places.stream()
