@@ -20,6 +20,22 @@ public class UploadUrlMapper {
 
     public String toPublicUrl(String storedPath) {
         if (!StringUtils.hasText(storedPath)) return null;
+        // If a legacy row already stored the public URL, normalize and return it.
+        String sp = storedPath.trim().replace('\\', '/');
+        if (sp.startsWith("/uploads/")) {
+            return sp;
+        }
+        String ud = (uploadDir == null ? "" : uploadDir.trim().replace('\\', '/'));
+        while (ud.endsWith("/")) ud = ud.substring(0, ud.length() - 1);
+        String udNoLead = ud.startsWith("/") ? ud.substring(1) : ud;
+
+        // Normalize common cases where stored paths accidentally included the base directory.
+        if (StringUtils.hasText(ud) && sp.startsWith(ud + "/")) {
+            return "/uploads/" + sp.substring(ud.length() + 1);
+        }
+        if (StringUtils.hasText(udNoLead) && sp.startsWith(udNoLead + "/")) {
+            return "/uploads/" + sp.substring(udNoLead.length() + 1);
+        }
         try {
             Path base = Path.of(uploadDir);
             Path p = Path.of(storedPath);
@@ -41,7 +57,7 @@ public class UploadUrlMapper {
             if (rel.startsWith("uploads/")) rel = rel.substring("uploads/".length());
             return "/uploads/" + rel;
         } catch (Exception ignored) {
-            String leaf = storedPath.replace('\\', '/');
+            String leaf = sp;
             int idx = leaf.lastIndexOf('/');
             String name = (idx >= 0) ? leaf.substring(idx + 1) : leaf;
             return "/uploads/" + name;
