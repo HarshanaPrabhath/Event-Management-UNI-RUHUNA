@@ -4,6 +4,7 @@ import com.management.event.dto.SignLetterRequestDto;
 import com.management.event.entity.Letter;
 import com.management.event.entity.User;
 import com.management.event.exception.ApiException;
+import com.management.event.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -34,6 +35,8 @@ public class PdfSigningService {
 
     @Value("${file.upload-dir}")
     private String uploadDir;
+
+    private final UserRepository userRepository;
 
     @Transactional
     public String stampSignature(Letter letter, User signer, SignLetterRequestDto req) {
@@ -102,6 +105,9 @@ public class PdfSigningService {
                 cs.drawImage(imgX, placement.x, placement.y, placement.w, placement.h);
 
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+
+
+
                 String signedByText = "Signed by: " + signer.getUserName();
                 String dateText = "Date: " + LocalDateTime.now().format(formatter);
 
@@ -208,8 +214,12 @@ public class PdfSigningService {
 
                 cs.drawImage(imgX, placement.x, placement.y, placement.w, placement.h);
 
+                User user = userRepository.findByRegNumber(signer.getRegNumber()).orElseThrow();
+
+                System.out.println(user.toString());
+
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-                String signedByText = "Signed by: " + signer.getRegNumber();
+                String signedByText = "Signed by: " + signer.getUserName();
                 String dateText = "Date: " + LocalDateTime.now().format(formatter);
 
                 float textX = placement.x + 6;

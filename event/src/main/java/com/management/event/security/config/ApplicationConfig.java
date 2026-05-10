@@ -130,7 +130,7 @@ public class ApplicationConfig {
 
             if (userRepository.findByRegNumber("LC2001").isEmpty()) {
                 User lecturer = new User();
-                lecturer.setUserName("lecturer");
+                lecturer.setUserName("Sujeewa LEC");
                 lecturer.setEmail("lecturer@example.com");
                 lecturer.setRegNumber("LC2001");
                 lecturer.setPassword(passwordEncoder.encode("1234"));
@@ -140,7 +140,7 @@ public class ApplicationConfig {
 
             if (userRepository.findByRegNumber("DID100").isEmpty()) {
                 User dean = new User();
-                dean.setUserName("dean");
+                dean.setUserName("Weerarathna DEAN");
                 dean.setEmail("dean@example.com");
                 dean.setRegNumber("DID100");
                 dean.setPassword(passwordEncoder.encode("deanpass"));
@@ -150,7 +150,7 @@ public class ApplicationConfig {
 
             if (userRepository.findByRegNumber("HODICT").isEmpty()) {
                 User hodict = new User();
-                hodict.setUserName("hodict");
+                hodict.setUserName("Kamal HOD");
                 hodict.setEmail("hodict@example.com");
                 hodict.setRegNumber("HODICT");
                 hodict.setPassword(passwordEncoder.encode("1234"));
