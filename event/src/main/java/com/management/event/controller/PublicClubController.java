@@ -17,7 +17,7 @@ import java.util.List;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/public/clubs")
+@RequestMapping({"/api/clubs", "/api/public/clubs"})
 public class PublicClubController {
 
     private final ClubRepository clubRepository;
@@ -30,8 +30,15 @@ public class PublicClubController {
         return ResponseEntity.ok(out);
     }
 
-    @GetMapping("/{clubName}")
-    public ResponseEntity<ClubResponseDto> get(@PathVariable String clubName) {
+    @GetMapping("/{clubId:\\d+}")
+    public ResponseEntity<ClubResponseDto> getById(@PathVariable Long clubId) {
+        Club club = clubRepository.findById(clubId)
+                .orElseThrow(() -> new ResourceNotFoundException("Club", "id", clubId));
+        return ResponseEntity.ok(toDto(club));
+    }
+
+    @GetMapping("/by-name/{clubName}")
+    public ResponseEntity<ClubResponseDto> getByName(@PathVariable String clubName) {
         Club club = clubRepository.findByClubName(clubName)
                 .orElseThrow(() -> new ResourceNotFoundException("Club", "clubName", clubName));
         return ResponseEntity.ok(toDto(club));

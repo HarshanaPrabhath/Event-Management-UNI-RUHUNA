@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.Instant;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -33,6 +34,10 @@ public class ClubAdminService {
         Club club = clubRepository.findByClubName(clubName)
                 .orElseThrow(() -> new ResourceNotFoundException("Club", "clubName", clubName));
         return toDto(club);
+    }
+
+    public List<ClubResponseDto> listAll() {
+        return clubRepository.findAll().stream().map(this::toDto).toList();
     }
 
     @Transactional
