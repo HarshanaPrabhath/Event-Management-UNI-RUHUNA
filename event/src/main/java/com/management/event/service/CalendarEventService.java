@@ -32,6 +32,29 @@ public class CalendarEventService {
     private final LetterRepository letterRepository;
 
     @Transactional(readOnly = true)
+    public List<CalendarEventResponseDto> getAllBookings() {
+        return letterRepository
+                .findByGlobalStatusInOrderByEventDateAscEventTimeAsc(
+                        Set.of(LetterStatus.PENDING, LetterStatus.PENDING_BOOKING, LetterStatus.APPROVED))
+                .stream()
+                .map(this::letterToDto)
+                .toList();
+    }
+
+    private CalendarEventResponseDto letterToDto(Letter letter) {
+        return CalendarEventResponseDto.builder()
+                .letterId(letter.getId())
+                .title(letter.getTitle())
+                .description(letter.getDescription())
+                .eventDate(letter.getEventDate())
+                .eventTime(letter.getEventTime())
+                .endTime(letter.getEventEndTime())
+                .placeName(letter.getEventPlace())
+                .status(letter.getGlobalStatus() != null ? letter.getGlobalStatus().name() : null)
+                .build();
+    }
+
+    @Transactional(readOnly = true)
     public List<CalendarEventResponseDto> getEvents(LocalDate from, LocalDate to, String placeName, boolean includePending) {
         List<CalendarEvent> events;
         boolean noRange = from == null && to == null;
