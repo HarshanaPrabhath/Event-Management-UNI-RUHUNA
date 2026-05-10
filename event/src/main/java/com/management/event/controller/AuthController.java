@@ -1,5 +1,7 @@
 package com.management.event.controller;
 
+import com.management.event.dto.UserSummaryDto;
+import com.management.event.entity.AppRole;
 import com.management.event.repository.UserRepository;
 import com.management.event.exception.ApiResponse;
 import com.management.event.security.auth.AuthenticationService;
@@ -8,6 +10,7 @@ import com.management.event.security.request.RegisterRequest;
 import com.management.event.security.response.RegisterResponse;
 import com.management.event.security.response.UserInfoResponse;
 import com.management.event.security.services.UserDetailsImpl;
+import com.management.event.security.services.UserDetailsServiceImpl;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -28,6 +31,7 @@ public class AuthController {
 
     private final AuthenticationService authenticationService;
     private final UserRepository userRepository;
+    private final UserDetailsServiceImpl userDetailsServiceImpl;
 
     @PostMapping("/register")
     public ResponseEntity<?> registerUser(@RequestBody RegisterRequest request) {
@@ -81,6 +85,16 @@ public class AuthController {
                 .build();
 
         return ResponseEntity.ok(userInfoResponse);
+    }
+
+    @GetMapping("/responsible-persons")
+    public ResponseEntity<List<UserSummaryDto>> getResponsiblePersons() {
+        List<AppRole> excluded = List.of(AppRole.ROLE_USER, AppRole.ROLE_ADMIN);
+        List<UserSummaryDto> users = userRepository.findUsersExcludingRoles(excluded)
+                .stream()
+                .map(u -> new UserSummaryDto(u.getRegNumber(), u.getUserName(), u.getEmail()))
+                .toList();
+        return ResponseEntity.ok(users);
     }
 
     @PostMapping("/signout")
