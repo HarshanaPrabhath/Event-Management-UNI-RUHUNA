@@ -36,4 +36,6 @@ public interface CalendarEventRepository extends JpaRepository<CalendarEvent, Lo
             LocalDate from,
             LocalDate to
     );
+
+    List<CalendarEvent> findByStatusInOrderByEventDateAscEventTimeAsc(Collection<CalendarEventStatus> statuses);
 }

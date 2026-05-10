@@ -51,6 +51,11 @@ public class CalendarController {
         return ResponseEntity.ok(calendarEventService.getEvents(from, to, placeName, effectiveIncludePending));
     }
 
+    @GetMapping("/bookings")
+    public ResponseEntity<List<CalendarEventResponseDto>> getAllBookings() {
+        return ResponseEntity.ok(calendarEventService.getAllBookings());
+    }
+
     @GetMapping("/conflicts")
     public ResponseEntity<CalendarConflictResponseDto> checkConflict(
             @RequestParam String placeName,
