@@ -17,9 +17,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.springframework.web.multipart.MultipartFile;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -100,7 +102,7 @@ public class PdfSigningService {
                 cs.drawImage(imgX, placement.x, placement.y, placement.w, placement.h);
 
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-                String signedByText = "Signed by: " + signer.getRegNumber();
+                String signedByText = "Signed by: " + signer.getUserName();
                 String dateText = "Date: " + LocalDateTime.now().format(formatter);
 
                 float textX = placement.x + 6;
@@ -123,6 +125,111 @@ public class PdfSigningService {
             }
 
             // 🔹 Save to TEMP
+            doc.save(tempPath.toFile());
+
+        } catch (IOException e) {
+            throw new ApiException("Failed to stamp signature onto PDF");
+        }
+
+        // 🔹 Replace original
+        try {
+            Files.move(tempPath, pdfPath, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw new ApiException("Failed to replace original PDF");
+        }
+
+        // 🔹 Update DB
+        String saved = pdfPath.toString().replace('\\', '/');
+        letter.setSignedPdfPath(saved);
+        letter.setSignedByRegNumber(signer.getRegNumber());
+        letter.setSignedAt(LocalDateTime.now());
+
+        return saved;
+    }
+
+    @Transactional
+    public String stampSignature(Letter letter, User signer, SignLetterRequestDto req, MultipartFile signaturePng) {
+
+        // 🔹 Get source PDF (keep existing path behavior)
+        String sourcePathStr = (letter.getSignedPdfPath() != null && !letter.getSignedPdfPath().isBlank())
+                ? letter.getSignedPdfPath()
+                : letter.getPdfPath();
+
+        if (sourcePathStr == null || sourcePathStr.isBlank()) {
+            throw new ApiException("Letter PDF path is missing");
+        }
+
+        if (signaturePng == null || signaturePng.isEmpty()) {
+            throw new ApiException("signature is required");
+        }
+
+        Path pdfPath = Path.of(sourcePathStr);
+        if (!Files.exists(pdfPath)) {
+            throw new ApiException("Letter PDF not found: " + sourcePathStr);
+        }
+
+        // 🔹 Load signature image from uploaded file (do not persist signature on disk)
+        BufferedImage signatureImg;
+        try (InputStream in = signaturePng.getInputStream()) {
+            signatureImg = ImageIO.read(in);
+        } catch (IOException e) {
+            throw new ApiException("Failed to read signature image");
+        }
+
+        if (signatureImg == null) {
+            throw new ApiException("Signature image is invalid");
+        }
+
+        // 🔹 TEMP FILE
+        Path tempPath = pdfPath.resolveSibling("temp-" + UUID.randomUUID() + ".pdf");
+
+        try (PDDocument doc = Loader.loadPDF(pdfPath.toFile())) {
+
+            if (req.getPageIndex() < 0 || req.getPageIndex() >= doc.getNumberOfPages()) {
+                throw new ApiException("Invalid pageIndex");
+            }
+
+            PDPage page = doc.getPage(req.getPageIndex());
+            PDRectangle media = page.getMediaBox();
+            float pageW = media.getWidth();
+            float pageH = media.getHeight();
+
+            Placement placement = resolvePlacement(req, pageW, pageH);
+
+            PDImageXObject imgX = LosslessFactory.createFromImage(doc, signatureImg);
+
+            try (PDPageContentStream cs = new PDPageContentStream(
+                    doc,
+                    page,
+                    PDPageContentStream.AppendMode.APPEND,
+                    true,
+                    true
+            )) {
+
+                cs.drawImage(imgX, placement.x, placement.y, placement.w, placement.h);
+
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+                String signedByText = "Signed by: " + signer.getRegNumber();
+                String dateText = "Date: " + LocalDateTime.now().format(formatter);
+
+                float textX = placement.x + 6;
+                float textY = placement.y - 12;
+
+                PDType1Font font = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+
+                cs.beginText();
+                cs.setFont(font, 7);
+                cs.newLineAtOffset(textX, textY);
+                cs.showText(signedByText);
+                cs.endText();
+
+                cs.beginText();
+                cs.setFont(font, 7);
+                cs.newLineAtOffset(textX, textY - 10);
+                cs.showText(dateText);
+                cs.endText();
+            }
+
             doc.save(tempPath.toFile());
 
         } catch (IOException e) {

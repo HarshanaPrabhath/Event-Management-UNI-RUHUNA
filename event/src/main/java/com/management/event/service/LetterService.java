@@ -513,9 +513,14 @@ public class LetterService {
     @Transactional
     public String signAndApproveCurrentStep(
             Long letterId,
-            com.management.event.dto.SignApproveRequestDto request
+            com.management.event.dto.SignApproveRequestDto request,
+            MultipartFile signaturePng
     ) {
         User currentUser = authenticatedUser.getAuthenticatedUser();
+
+        if (signaturePng == null || signaturePng.isEmpty()) {
+            throw new ApiException("signature is required");
+        }
 
         List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(letterId);
         if (steps.isEmpty()) {
@@ -563,7 +568,7 @@ public class LetterService {
 //        }
 
         Letter letter = currentStep.getLetter();
-        String signedPath = pdfSigningService.stampSignature(letter, currentUser, effectiveReq);
+        String signedPath = pdfSigningService.stampSignature(letter, currentUser, effectiveReq, signaturePng);
         currentStep.setSignedAt(java.time.LocalDateTime.now());
 
         String remarks = request != null ? request.getRemarks() : null;

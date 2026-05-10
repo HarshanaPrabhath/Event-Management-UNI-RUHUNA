@@ -4,6 +4,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -11,6 +13,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
 import java.util.HashMap;
 import java.util.List;
@@ -80,6 +85,30 @@ public class MyGlobalExceptionHandler {
     public ResponseEntity<ApiResponse> myHttpMessageNotReadableException(HttpMessageNotReadableException e){
         ApiResponse apiResponse = new ApiResponse("Malformed JSON request", false);
         return new ResponseEntity<>(apiResponse, HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler({MultipartException.class, MaxUploadSizeExceededException.class})
+    public ResponseEntity<ApiResponse> myMultipartException(Exception e){
+        ApiResponse apiResponse = new ApiResponse("Invalid multipart request", false);
+        return new ResponseEntity<>(apiResponse, HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ApiResponse> myMissingServletRequestPartException(MissingServletRequestPartException e){
+        ApiResponse apiResponse = new ApiResponse("Missing multipart part: " + e.getRequestPartName(), false);
+        return new ResponseEntity<>(apiResponse, HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ApiResponse> myHttpMediaTypeNotSupportedException(HttpMediaTypeNotSupportedException e){
+        ApiResponse apiResponse = new ApiResponse("Unsupported Content-Type", false);
+        return new ResponseEntity<>(apiResponse, HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse> myHttpRequestMethodNotSupportedException(HttpRequestMethodNotSupportedException e){
+        ApiResponse apiResponse = new ApiResponse("Method not allowed", false);
+        return new ResponseEntity<>(apiResponse, HttpStatus.METHOD_NOT_ALLOWED);
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
@@ -153,4 +182,3 @@ public class MyGlobalExceptionHandler {
         return "Request violates a data integrity constraint";
     }
 }
-
