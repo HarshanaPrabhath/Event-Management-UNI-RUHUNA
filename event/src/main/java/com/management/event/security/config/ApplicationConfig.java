@@ -69,6 +69,7 @@ public class ApplicationConfig {
                                 "/api/auth/signin",
                                 "/api/auth/register",
                                 "/api/calendar/**",
+                                "/api/clubs/**",
                                 "/api/public/**",
                                 "/images/**",
                                 "/uploads/**"

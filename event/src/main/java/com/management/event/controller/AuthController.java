@@ -1,15 +1,16 @@
 package com.management.event.controller;
 
 import com.management.event.repository.UserRepository;
+import com.management.event.exception.ApiResponse;
 import com.management.event.security.auth.AuthenticationService;
 import com.management.event.security.request.LoginRequest;
 import com.management.event.security.request.RegisterRequest;
-import com.management.event.security.response.MassageResponse;
 import com.management.event.security.response.RegisterResponse;
 import com.management.event.security.response.UserInfoResponse;
 import com.management.event.security.services.UserDetailsImpl;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,14 +33,14 @@ public class AuthController {
     public ResponseEntity<?> registerUser(@RequestBody RegisterRequest request) {
         if (userRepository.existsByRegNumber(request.getRegNumber())) {
             return ResponseEntity
-                    .badRequest()
-                    .body(new MassageResponse("Error: Registration number already exists!"));
+                    .status(HttpStatus.CONFLICT)
+                    .body(new ApiResponse("Registration number already exists", false));
         }
 
         if (userRepository.existsByEmail(request.getEmail())) {
             return ResponseEntity
-                    .badRequest()
-                    .body(new MassageResponse("Error: Email is already taken!"));
+                    .status(HttpStatus.CONFLICT)
+                    .body(new ApiResponse("Email is already taken", false));
         }
 
         RegisterResponse registerResponse = authenticationService.register(request);

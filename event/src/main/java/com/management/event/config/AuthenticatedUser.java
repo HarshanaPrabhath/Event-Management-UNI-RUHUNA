@@ -1,7 +1,7 @@
 package com.management.event.config;
 
 import com.management.event.entity.User;
-import com.management.event.exception.ApiException;
+import com.management.event.exception.UnauthorizedException;
 import com.management.event.exception.ResourceNotFoundException;
 import com.management.event.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +20,7 @@ public class AuthenticatedUser {
     public User getAuthenticatedUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
-            throw new ApiException("Authenticated user not found");
+            throw new UnauthorizedException("Unauthorized");
         }
 
         return userRepository.findByRegNumber(authentication.getName())
