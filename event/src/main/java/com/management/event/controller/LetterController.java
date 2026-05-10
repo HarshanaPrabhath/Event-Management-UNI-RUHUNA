@@ -18,7 +18,10 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -78,12 +81,39 @@ public class LetterController {
     }
 
     // For steps that require a signature: stamp signature + approve + forward to next step.
-    @PostMapping("/{letterId}/sign-approve")
+    @PostMapping(value = "/{letterId}/sign-approve", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<SignLetterResponseDto> signAndApprove(
             @PathVariable Long letterId,
-            @Valid @RequestBody(required = false) SignApproveRequestDto request
+            @RequestPart("signature") MultipartFile signature,
+            @RequestParam(value = "pageIndex", defaultValue = "0") int pageIndex,
+            @RequestParam(value = "x", required = false) Float x,
+            @RequestParam(value = "y", required = false) Float y,
+            @RequestParam(value = "width", required = false) Float width,
+            @RequestParam(value = "height", required = false) Float height,
+            @RequestParam(value = "nx", required = false) Float nx,
+            @RequestParam(value = "ny", required = false) Float ny,
+            @RequestParam(value = "nw", required = false) Float nw,
+            @RequestParam(value = "nh", required = false) Float nh,
+            @RequestParam(value = "origin", defaultValue = "TOP_LEFT") String origin,
+            @RequestParam(value = "remarks", required = false) String remarks
     ) {
-        String signedPath = letterService.signAndApproveCurrentStep(letterId, request);
+        SignLetterRequestDto signDto = new SignLetterRequestDto();
+        signDto.setPageIndex(pageIndex);
+        signDto.setX(x);
+        signDto.setY(y);
+        signDto.setWidth(width);
+        signDto.setHeight(height);
+        signDto.setNx(nx);
+        signDto.setNy(ny);
+        signDto.setNw(nw);
+        signDto.setNh(nh);
+        signDto.setOrigin(origin);
+
+        SignApproveRequestDto request = new SignApproveRequestDto();
+        request.setSignature(signDto);
+        request.setRemarks(remarks);
+
+        String signedPath = letterService.signAndApproveCurrentStep(letterId, request, signature);
         return ResponseEntity.ok(new SignLetterResponseDto(letterId, signedPath));
     }
 }
