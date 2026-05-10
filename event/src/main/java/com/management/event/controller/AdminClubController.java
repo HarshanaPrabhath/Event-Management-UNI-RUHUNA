@@ -50,6 +50,7 @@ public class AdminClubController {
         return ResponseEntity.ok(adminSecretaryService.listAllSecretaries());
     }
 
+
     @PutMapping("/{clubId}")
     public ResponseEntity<ClubResponseDto> update(@PathVariable Long clubId, @RequestBody AdminClubUpsertRequestDto req) {
         requireAdmin();
