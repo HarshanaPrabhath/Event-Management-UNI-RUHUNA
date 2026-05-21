@@ -172,8 +172,16 @@ public class MyGlobalExceptionHandler {
         if (m.contains("email")) return "Email is already taken";
 
         // Club secretary assignment (unique constraints)
-        if (m.contains("user_reg_number") || m.contains("user reg number")) return "This user is already assigned as a secretary";
-        if (m.contains("club_id") || m.contains("club id")) return "This club already has a secretary assigned";
+        if (m.contains("club_secretary")) {
+            if (m.contains("user_reg_number") || m.contains("user reg number")) return "This user is already assigned as a secretary";
+            if (m.contains("club_id") || m.contains("club id")) return "This club already has a secretary assigned";
+        }
+
+        // Club senior treasurer assignment (unique constraints)
+        if (m.contains("club_senior_treasurer")) {
+            if (m.contains("user_reg_number") || m.contains("user reg number")) return "This user is already assigned as a senior treasurer";
+            if (m.contains("club_id") || m.contains("club id")) return "This club already has a senior treasurer assigned";
+        }
 
         // Generic duplicates / FK constraints
         if (m.contains("duplicate") || m.contains("unique")) return "Duplicate value violates a unique constraint";

@@ -12,6 +12,7 @@ import com.management.event.exception.ForbiddenException;
 import com.management.event.exception.ResourceNotFoundException;
 import com.management.event.repository.ClubRepository;
 import com.management.event.repository.ClubSecretaryRepository;
+import com.management.event.repository.ClubSeniorTreasurerRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +26,7 @@ public class ClubSecretaryService {
 
     private final AuthenticatedUser authenticatedUser;
     private final ClubSecretaryRepository clubSecretaryRepository;
+    private final ClubSeniorTreasurerRepository clubSeniorTreasurerRepository;
     private final ClubRepository clubRepository;
     private final ClubFileStorageService clubFileStorageService;
     private final UploadUrlMapper uploadUrlMapper;
@@ -75,6 +77,9 @@ public class ClubSecretaryService {
         String sec = clubSecretaryRepository.findByClub_Id(club.getId())
                 .map(cs -> cs.getUser().getRegNumber())
                 .orElse(null);
+        String st = clubSeniorTreasurerRepository.findByClub_Id(club.getId())
+                .map(cst -> cst.getUser().getRegNumber())
+                .orElse(null);
         return ClubResponseDto.builder()
                 .id(club.getId())
                 .clubName(club.getClubName())
@@ -84,6 +89,7 @@ public class ClubSecretaryService {
                 .description(club.getDescription())
                 .executiveBoardJson(club.getExecutiveBoardJson())
                 .secretaryRegNumber(sec)
+                .seniorTreasurerRegNumber(st)
                 .build();
     }
 

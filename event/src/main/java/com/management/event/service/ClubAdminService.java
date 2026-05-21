@@ -4,12 +4,14 @@ import com.management.event.dto.club.ClubResponseDto;
 import com.management.event.entity.AppRole;
 import com.management.event.entity.Club;
 import com.management.event.entity.ClubSecretary;
+import com.management.event.entity.ClubSeniorTreasurer;
 import com.management.event.entity.Role;
 import com.management.event.entity.User;
 import com.management.event.exception.BadRequestException;
 import com.management.event.exception.ResourceNotFoundException;
 import com.management.event.repository.ClubRepository;
 import com.management.event.repository.ClubSecretaryRepository;
+import com.management.event.repository.ClubSeniorTreasurerRepository;
 import com.management.event.repository.RoleRepository;
 import com.management.event.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +28,7 @@ public class ClubAdminService {
 
     private final ClubRepository clubRepository;
     private final ClubSecretaryRepository clubSecretaryRepository;
+    private final ClubSeniorTreasurerRepository clubSeniorTreasurerRepository;
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final UploadUrlMapper uploadUrlMapper;
@@ -45,6 +48,7 @@ public class ClubAdminService {
         if (req == null) throw new BadRequestException("Request body is required");
         if (!StringUtils.hasText(req.getClubName())) throw new BadRequestException("clubName is required");
         if (!StringUtils.hasText(req.getSecretaryRegNumber())) throw new BadRequestException("secretaryRegNumber is required");
+        if (!StringUtils.hasText(req.getSeniorTreasurerRegNumber())) throw new BadRequestException("seniorTreasurerRegNumber is required");
         String name = req.getClubName().trim();
         if (clubRepository.existsByClubName(name)) throw new BadRequestException("clubName already exists");
 
@@ -60,6 +64,7 @@ public class ClubAdminService {
         club = clubRepository.save(club);
 
         assignSecretary(club.getId(), req.getSecretaryRegNumber().trim());
+        assignSeniorTreasurer(club.getId(), req.getSeniorTreasurerRegNumber().trim());
         return toDto(club);
     }
 
@@ -90,6 +95,15 @@ public class ClubAdminService {
                 assignSecretary(clubId, sec);
             }
         }
+        if (req.getSeniorTreasurerRegNumber() != null) {
+            // if empty => unassign, if non-empty => assign/replace
+            String st = req.getSeniorTreasurerRegNumber().trim();
+            if (st.isBlank()) {
+                clubSeniorTreasurerRepository.findByClub_Id(clubId).ifPresent(clubSeniorTreasurerRepository::delete);
+            } else {
+                assignSeniorTreasurer(clubId, st);
+            }
+        }
         return toDto(club);
     }
 
@@ -97,8 +111,9 @@ public class ClubAdminService {
     public void delete(Long clubId) {
         Club club = clubRepository.findById(clubId)
                 .orElseThrow(() -> new ResourceNotFoundException("Club", "id", clubId));
-        // Remove secretary mapping first to avoid FK issues.
+        // Remove mappings first to avoid FK issues.
         clubSecretaryRepository.findByClub_Id(clubId).ifPresent(clubSecretaryRepository::delete);
+        clubSeniorTreasurerRepository.findByClub_Id(clubId).ifPresent(clubSeniorTreasurerRepository::delete);
         clubRepository.delete(club);
     }
 
@@ -128,9 +143,38 @@ public class ClubAdminService {
         clubSecretaryRepository.save(cs);
     }
 
+    @Transactional
+    public void assignSeniorTreasurer(Long clubId, String seniorTreasurerRegNumber) {
+        Club club = clubRepository.findById(clubId)
+                .orElseThrow(() -> new ResourceNotFoundException("Club", "id", clubId));
+        User user = userRepository.findByRegNumber(seniorTreasurerRegNumber)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "regNumber", seniorTreasurerRegNumber));
+
+        // Ensure ROLE_SENIOR_TRESURER is present.
+        if (!RoleUtil.hasRole(user, AppRole.ROLE_SENIOR_TRESURER)) {
+            Role role = roleRepository.findByRoleName(AppRole.ROLE_SENIOR_TRESURER)
+                    .orElseThrow(() -> new BadRequestException("ROLE_SENIOR_TRESURER missing in role table"));
+            user.getRoles().add(role);
+            userRepository.save(user);
+        }
+
+        // Replace existing mapping for this club, and also enforce one club per senior treasurer user.
+        clubSeniorTreasurerRepository.findByClub_Id(clubId).ifPresent(clubSeniorTreasurerRepository::delete);
+        clubSeniorTreasurerRepository.findByUser_RegNumber(user.getRegNumber()).ifPresent(clubSeniorTreasurerRepository::delete);
+
+        ClubSeniorTreasurer cst = new ClubSeniorTreasurer();
+        cst.setClub(club);
+        cst.setUser(user);
+        cst.setCreatedAt(Instant.now());
+        clubSeniorTreasurerRepository.save(cst);
+    }
+
     private ClubResponseDto toDto(Club club) {
         String sec = clubSecretaryRepository.findByClub_Id(club.getId())
                 .map(cs -> cs.getUser().getRegNumber())
+                .orElse(null);
+        String st = clubSeniorTreasurerRepository.findByClub_Id(club.getId())
+                .map(cst -> cst.getUser().getRegNumber())
                 .orElse(null);
         return ClubResponseDto.builder()
                 .id(club.getId())
@@ -141,6 +185,7 @@ public class ClubAdminService {
                 .description(club.getDescription())
                 .executiveBoardJson(club.getExecutiveBoardJson())
                 .secretaryRegNumber(sec)
+                .seniorTreasurerRegNumber(st)
                 .build();
     }
 

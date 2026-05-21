@@ -5,6 +5,7 @@ import com.management.event.entity.Club;
 import com.management.event.exception.ResourceNotFoundException;
 import com.management.event.repository.ClubRepository;
 import com.management.event.repository.ClubSecretaryRepository;
+import com.management.event.repository.ClubSeniorTreasurerRepository;
 import com.management.event.service.UploadUrlMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +23,7 @@ public class PublicClubController {
 
     private final ClubRepository clubRepository;
     private final ClubSecretaryRepository clubSecretaryRepository;
+    private final ClubSeniorTreasurerRepository clubSeniorTreasurerRepository;
     private final UploadUrlMapper uploadUrlMapper;
 
     @GetMapping
@@ -48,6 +50,9 @@ public class PublicClubController {
         String sec = clubSecretaryRepository.findByClub_Id(club.getId())
                 .map(cs -> cs.getUser().getRegNumber())
                 .orElse(null);
+        String st = clubSeniorTreasurerRepository.findByClub_Id(club.getId())
+                .map(cst -> cst.getUser().getRegNumber())
+                .orElse(null);
         return ClubResponseDto.builder()
                 .id(club.getId())
                 .clubName(club.getClubName())
@@ -57,6 +62,7 @@ public class PublicClubController {
                 .description(club.getDescription())
                 .executiveBoardJson(club.getExecutiveBoardJson())
                 .secretaryRegNumber(sec)
+                .seniorTreasurerRegNumber(st)
                 .build();
     }
 }
