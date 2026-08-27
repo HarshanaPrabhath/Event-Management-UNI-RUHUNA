@@ -2,9 +2,10 @@ package com.management.event.service;
 
 import com.management.event.dto.club.ClubSecretaryResponseDto;
 import com.management.event.entity.AppRole;
-import com.management.event.entity.ClubSecretary;
+import com.management.event.entity.ClubExecutive;
+import com.management.event.entity.ClubExecutiveRole;
 import com.management.event.entity.User;
-import com.management.event.repository.ClubSecretaryRepository;
+import com.management.event.repository.ClubExecutiveRepository;
 import com.management.event.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -18,14 +19,14 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AdminSecretaryService {
 
-    private final ClubSecretaryRepository clubSecretaryRepository;
+    private final ClubExecutiveRepository clubExecutiveRepository;
     private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
     public List<ClubSecretaryResponseDto> listAllSecretaries() {
-        Map<String, ClubSecretary> clubByReg = clubSecretaryRepository.findAllWithUserAndClub()
+        Map<String, ClubExecutive> clubByReg = clubExecutiveRepository.findAllWithUserAndClubByRole(ClubExecutiveRole.SECRETARY)
                 .stream()
-                .collect(Collectors.toMap(cs -> cs.getUser().getRegNumber(), cs -> cs));
+                .collect(Collectors.toMap(ce -> ce.getUser().getRegNumber(), ce -> ce));
 
         return userRepository.findByRoleName(AppRole.ROLE_SECRETARY)
                 .stream()
@@ -33,7 +34,7 @@ public class AdminSecretaryService {
                 .toList();
     }
 
-    private ClubSecretaryResponseDto toDto(User user, ClubSecretary cs) {
+    private ClubSecretaryResponseDto toDto(User user, ClubExecutive cs) {
         return ClubSecretaryResponseDto.builder()
                 .regNumber(user.getRegNumber())
                 .userName(user.getUserName())
@@ -44,4 +45,3 @@ public class AdminSecretaryService {
                 .build();
     }
 }
-

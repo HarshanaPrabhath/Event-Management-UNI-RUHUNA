@@ -2,9 +2,10 @@ package com.management.event.service;
 
 import com.management.event.dto.club.ClubSeniorTreasurerResponseDto;
 import com.management.event.entity.AppRole;
-import com.management.event.entity.ClubSeniorTreasurer;
+import com.management.event.entity.ClubExecutive;
+import com.management.event.entity.ClubExecutiveRole;
 import com.management.event.entity.User;
-import com.management.event.repository.ClubSeniorTreasurerRepository;
+import com.management.event.repository.ClubExecutiveRepository;
 import com.management.event.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -18,14 +19,14 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AdminSeniorTreasurerService {
 
-    private final ClubSeniorTreasurerRepository clubSeniorTreasurerRepository;
+    private final ClubExecutiveRepository clubExecutiveRepository;
     private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
     public List<ClubSeniorTreasurerResponseDto> listAllSeniorTreasurers() {
-        Map<String, ClubSeniorTreasurer> clubByReg = clubSeniorTreasurerRepository.findAllWithUserAndClub()
+        Map<String, ClubExecutive> clubByReg = clubExecutiveRepository.findAllWithUserAndClubByRole(ClubExecutiveRole.SENIOR_TREASURER)
                 .stream()
-                .collect(Collectors.toMap(cst -> cst.getUser().getRegNumber(), cst -> cst));
+                .collect(Collectors.toMap(ce -> ce.getUser().getRegNumber(), ce -> ce));
 
         return userRepository.findByRoleName(AppRole.ROLE_SENIOR_TRESURER)
                 .stream()
@@ -33,7 +34,7 @@ public class AdminSeniorTreasurerService {
                 .toList();
     }
 
-    private ClubSeniorTreasurerResponseDto toDto(User user, ClubSeniorTreasurer cst) {
+    private ClubSeniorTreasurerResponseDto toDto(User user, ClubExecutive cst) {
         return ClubSeniorTreasurerResponseDto.builder()
                 .regNumber(user.getRegNumber())
                 .userName(user.getUserName())
@@ -44,4 +45,3 @@ public class AdminSeniorTreasurerService {
                 .build();
     }
 }
-

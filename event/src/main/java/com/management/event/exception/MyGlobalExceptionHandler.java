@@ -171,16 +171,11 @@ public class MyGlobalExceptionHandler {
         if (m.contains("reg_number") || m.contains("reg number")) return "Registration number already exists";
         if (m.contains("email")) return "Email is already taken";
 
-        // Club secretary assignment (unique constraints)
-        if (m.contains("club_secretary")) {
-            if (m.contains("user_reg_number") || m.contains("user reg number")) return "This user is already assigned as a secretary";
-            if (m.contains("club_id") || m.contains("club id")) return "This club already has a secretary assigned";
-        }
-
-        // Club senior treasurer assignment (unique constraints)
-        if (m.contains("club_senior_treasurer")) {
-            if (m.contains("user_reg_number") || m.contains("user reg number")) return "This user is already assigned as a senior treasurer";
-            if (m.contains("club_id") || m.contains("club id")) return "This club already has a senior treasurer assigned";
+        // Club executive assignment (unique constraints)
+        // DB messages vary by provider; keep this mapping conservative.
+        if (m.contains("club_executive")) {
+            if (m.contains("user_reg_number") || m.contains("user reg number")) return "This user is already assigned to a club executive role";
+            if (m.contains("club_id") || m.contains("club id")) return "This club already has an executive assigned for that role";
         }
 
         // Generic duplicates / FK constraints

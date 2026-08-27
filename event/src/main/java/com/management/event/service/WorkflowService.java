@@ -1,17 +1,17 @@
 package com.management.event.service;
 
 import com.management.event.config.AuthenticatedUser;
+import com.management.event.dto.LetterApproveRequestDto;
+import com.management.event.dto.LetterRejectRequestDto;
 import com.management.event.dto.WorkflowActionRequestDto;
 import com.management.event.dto.WorkflowLetterResponseDto;
 import com.management.event.dto.WorkflowStepResponseDto;
 import com.management.event.entity.Letter;
-import com.management.event.entity.LetterStatus;
 import com.management.event.entity.StepStatus;
 import com.management.event.entity.User;
 import com.management.event.entity.WorkflowStep;
 import com.management.event.exception.ApiException;
 import com.management.event.exception.ResourceNotFoundException;
-import com.management.event.repository.LetterRepository;
 import com.management.event.repository.WorkflowStepRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -20,90 +20,45 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+/**
+ * Thin wrapper over {@link LetterService} so the PATCH /api/workflows endpoint and the
+ * /api/letter/* endpoints share one implementation of the approval state machine.
+ */
 @Service
 @RequiredArgsConstructor
 public class WorkflowService {
 
     private final WorkflowStepRepository workflowStepRepository;
-    private final LetterRepository letterRepository;
     private final AuthenticatedUser authenticatedUser;
-    private final EmailNotificationService emailNotificationService;
+    private final LetterService letterService;
     private final UploadUrlMapper uploadUrlMapper;
 
     @Transactional
     public WorkflowLetterResponseDto actOnWorkflow(Long letterId, @Valid WorkflowActionRequestDto request) {
         User currentUser = authenticatedUser.getAuthenticatedUser();
-        List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(letterId);
 
+        String action = request.getAction() == null ? "" : request.getAction().trim().toLowerCase();
+        switch (action) {
+            case "approve" -> {
+                LetterApproveRequestDto dto = new LetterApproveRequestDto();
+                dto.setRemarks(request.getRemarks());
+                letterService.approveLetter(letterId, dto);
+            }
+            case "reject" -> {
+                LetterRejectRequestDto dto = new LetterRejectRequestDto();
+                dto.setRemarks(request.getRemarks());
+                letterService.rejectLetter(letterId, dto);
+            }
+            case "return", "return_to_secretary", "return-to-secretary" ->
+                    letterService.returnToSecretary(letterId, request.getRemarks());
+            default -> throw new ApiException("Invalid workflow action. Use approve, reject or return");
+        }
+
+        List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(letterId);
         if (steps.isEmpty()) {
             throw new ResourceNotFoundException("Workflow", "letterId", letterId);
         }
-
-        WorkflowStep currentStep = steps.stream()
-                .filter(step -> step.getStatus() == StepStatus.CURRENT)
-                .findFirst()
-                .orElseThrow(() -> new ApiException("No current workflow step found"));
-
-        if (!currentStep.getUser().getRegNumber().equals(currentUser.getRegNumber())) {
-            throw new ApiException("You can only act on your current workflow step");
-        }
-
-        String action = request.getAction().trim().toLowerCase();
-        switch (action) {
-            case "approve" -> approveCurrentStep(steps, currentStep);
-            case "reject" -> rejectCurrentStep(currentStep);
-            default -> throw new ApiException("Invalid workflow action. Use approve or reject");
-        }
-
-        if (request.getRemarks() != null && !request.getRemarks().isBlank()) {
-            currentStep.setRemarks(request.getRemarks().trim());
-        }
-
-        workflowStepRepository.saveAll(steps);
-        letterRepository.save(currentStep.getLetter());
-
-        // Notifications (best-effort)
-        if ("reject".equals(action)) {
-            emailNotificationService.notifyRequesterRejected(
-                    currentStep.getLetter(),
-                    currentUser,
-                    request.getRemarks()
-            );
-        } else if ("approve".equals(action)) {
-            WorkflowStep next = steps.stream()
-                    .filter(s -> s.getStatus() == StepStatus.CURRENT)
-                    .findFirst()
-                    .orElse(null);
-            if (next == null) {
-                emailNotificationService.notifyRequesterApproved(currentStep.getLetter(), currentUser);
-            } else {
-                emailNotificationService.notifyApproverAssigned(currentStep.getLetter(), next.getUser());
-            }
-        }
-
-        return buildWorkflowResponse(currentStep.getLetter(), steps, currentUser.getRegNumber());
-    }
-
-    private void approveCurrentStep(List<WorkflowStep> steps, WorkflowStep currentStep) {
-        currentStep.setStatus(StepStatus.APPROVED);
-
-        WorkflowStep nextStep = steps.stream()
-                .filter(step -> step.getStepOrder().equals(currentStep.getStepOrder() + 1))
-                .findFirst()
-                .orElse(null);
-
-        if (nextStep == null) {
-            currentStep.getLetter().setGlobalStatus(LetterStatus.APPROVED);
-            return;
-        }
-
-        nextStep.setStatus(StepStatus.CURRENT);
-        currentStep.getLetter().setGlobalStatus(LetterStatus.PENDING);
-    }
-
-    private void rejectCurrentStep(WorkflowStep currentStep) {
-        currentStep.setStatus(StepStatus.REJECTED);
-        currentStep.getLetter().setGlobalStatus(LetterStatus.REJECTED);
+        return buildWorkflowResponse(steps.get(0).getLetter(), steps, currentUser.getRegNumber());
     }
 
     private WorkflowLetterResponseDto buildWorkflowResponse(Letter letter,

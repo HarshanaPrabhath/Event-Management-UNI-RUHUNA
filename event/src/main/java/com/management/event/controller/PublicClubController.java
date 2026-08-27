@@ -2,10 +2,10 @@ package com.management.event.controller;
 
 import com.management.event.dto.club.ClubResponseDto;
 import com.management.event.entity.Club;
+import com.management.event.entity.ClubExecutiveRole;
 import com.management.event.exception.ResourceNotFoundException;
 import com.management.event.repository.ClubRepository;
-import com.management.event.repository.ClubSecretaryRepository;
-import com.management.event.repository.ClubSeniorTreasurerRepository;
+import com.management.event.repository.ClubExecutiveRepository;
 import com.management.event.service.UploadUrlMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -22,8 +22,7 @@ import java.util.List;
 public class PublicClubController {
 
     private final ClubRepository clubRepository;
-    private final ClubSecretaryRepository clubSecretaryRepository;
-    private final ClubSeniorTreasurerRepository clubSeniorTreasurerRepository;
+    private final ClubExecutiveRepository clubExecutiveRepository;
     private final UploadUrlMapper uploadUrlMapper;
 
     @GetMapping
@@ -47,11 +46,11 @@ public class PublicClubController {
     }
 
     private ClubResponseDto toDto(Club club) {
-        String sec = clubSecretaryRepository.findByClub_Id(club.getId())
-                .map(cs -> cs.getUser().getRegNumber())
+        String sec = clubExecutiveRepository.findByClub_IdAndExecutiveRole(club.getId(), ClubExecutiveRole.SECRETARY)
+                .map(ce -> ce.getUser().getRegNumber())
                 .orElse(null);
-        String st = clubSeniorTreasurerRepository.findByClub_Id(club.getId())
-                .map(cst -> cst.getUser().getRegNumber())
+        String st = clubExecutiveRepository.findByClub_IdAndExecutiveRole(club.getId(), ClubExecutiveRole.SENIOR_TREASURER)
+                .map(ce -> ce.getUser().getRegNumber())
                 .orElse(null);
         return ClubResponseDto.builder()
                 .id(club.getId())
