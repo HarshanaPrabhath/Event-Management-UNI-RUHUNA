@@ -93,6 +93,30 @@ public class EmailNotificationService {
         send(letter.getUser().getEmail(), subject, body);
     }
 
+    public void notifySeniorTreasurerBounce(Letter letter, User rejectedBy, String reason, User seniorTreasurer) {
+        if (letter == null || seniorTreasurer == null) return;
+        String subject = "A letter was sent back to you";
+        String body = """
+                Hello %s,
+
+                The letter titled "%s" was rejected further down the approval chain and has been
+                returned to you to decide what to do next.
+                Letter ID: %s
+                Rejected by: %s (%s)
+                Reason: %s
+
+                Please log in to re-forward it or send it back to the club secretary.
+                """.formatted(
+                nullToEmpty(seniorTreasurer.getUserName()),
+                nullToEmpty(letter.getTitle()),
+                String.valueOf(letter.getId()),
+                rejectedBy != null ? nullToEmpty(rejectedBy.getUserName()) : "",
+                rejectedBy != null ? nullToEmpty(rejectedBy.getRegNumber()) : "",
+                reason == null ? "" : reason
+        );
+        send(seniorTreasurer.getEmail(), subject, body);
+    }
+
     private void send(String to, String subject, String text) {
         if (!enabled) return;
         if (!StringUtils.hasText(to)) return;

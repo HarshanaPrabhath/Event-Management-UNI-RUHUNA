@@ -7,6 +7,8 @@ public class AdminClubUpsertRequestDto {
     private String clubName;
     // Admin registers the club by assigning its secretary user account.
     private String secretaryRegNumber;
+    // Admin assigns senior treasurer user account.
+    private String seniorTreasurerRegNumber;
 
     // NOTE: remaining details are meant to be managed by the club secretary via /api/me/club.
     // These are kept optional for backward compatibility if you already sent them from frontend;

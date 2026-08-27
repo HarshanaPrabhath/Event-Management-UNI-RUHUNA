@@ -1,6 +1,6 @@
 package com.management.event.service;
 
-import com.management.event.dto.club.ClubSecretaryResponseDto;
+import com.management.event.dto.club.ClubSeniorTreasurerResponseDto;
 import com.management.event.entity.AppRole;
 import com.management.event.entity.ClubExecutive;
 import com.management.event.entity.ClubExecutiveRole;
@@ -17,31 +17,31 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-public class AdminSecretaryService {
+public class AdminSeniorTreasurerService {
 
     private final ClubExecutiveRepository clubExecutiveRepository;
     private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
-    public List<ClubSecretaryResponseDto> listAllSecretaries() {
-        Map<String, ClubExecutive> clubByReg = clubExecutiveRepository.findAllWithUserAndClubByRole(ClubExecutiveRole.SECRETARY)
+    public List<ClubSeniorTreasurerResponseDto> listAllSeniorTreasurers() {
+        Map<String, ClubExecutive> clubByReg = clubExecutiveRepository.findAllWithUserAndClubByRole(ClubExecutiveRole.SENIOR_TREASURER)
                 .stream()
                 .collect(Collectors.toMap(ce -> ce.getUser().getRegNumber(), ce -> ce));
 
-        return userRepository.findByRoleName(AppRole.ROLE_SECRETARY)
+        return userRepository.findByRoleName(AppRole.ROLE_SENIOR_TRESURER)
                 .stream()
                 .map(u -> toDto(u, clubByReg.get(u.getRegNumber())))
                 .toList();
     }
 
-    private ClubSecretaryResponseDto toDto(User user, ClubExecutive cs) {
-        return ClubSecretaryResponseDto.builder()
+    private ClubSeniorTreasurerResponseDto toDto(User user, ClubExecutive cst) {
+        return ClubSeniorTreasurerResponseDto.builder()
                 .regNumber(user.getRegNumber())
                 .userName(user.getUserName())
                 .email(user.getEmail())
-                .clubId(cs != null ? cs.getClub().getId() : null)
-                .clubName(cs != null ? cs.getClub().getClubName() : null)
-                .assignedAt(cs != null ? cs.getCreatedAt() : null)
+                .clubId(cst != null ? cst.getClub().getId() : null)
+                .clubName(cst != null ? cst.getClub().getClubName() : null)
+                .assignedAt(cst != null ? cst.getCreatedAt() : null)
                 .build();
     }
 }

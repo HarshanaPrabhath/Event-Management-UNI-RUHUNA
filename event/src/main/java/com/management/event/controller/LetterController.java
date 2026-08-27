@@ -65,6 +65,35 @@ public class LetterController {
         return ResponseEntity.ok("Letter rejected successfully");
     }
 
+    // Senior treasurer sends a bounced letter back to the club secretary instead of re-forwarding it.
+    @PostMapping("/{letterId}/return-to-secretary")
+    public ResponseEntity<String> returnToSecretary(@PathVariable Long letterId,
+                                                    @RequestBody(required = false) LetterRejectRequestDto request) {
+        String remarks = request == null ? null
+                : (request.getRejectionReason() != null ? request.getRejectionReason() : request.getRemarks());
+        letterService.returnToSecretary(letterId, remarks);
+        return ResponseEntity.ok("Letter returned to the club secretary");
+    }
+
+    // Club secretary edits a returned letter and pushes it back into the flow from the start.
+    // Accepts multipart form-data (to allow a replacement PDF) but all fields are optional.
+    @PostMapping("/{letterId}/resend")
+    public ResponseEntity<String> resendLetter(@PathVariable Long letterId,
+                                               @ModelAttribute LetterPlaceRequestDto request) {
+        letterService.resendLetter(letterId, request);
+        return ResponseEntity.ok("Letter resent");
+    }
+
+    // Permanently close a letter (club secretary who owns it, or the club senior treasurer).
+    @PostMapping("/{letterId}/cancel")
+    public ResponseEntity<String> cancelLetter(@PathVariable Long letterId,
+                                               @RequestBody(required = false) LetterRejectRequestDto request) {
+        String remarks = request == null ? null
+                : (request.getRejectionReason() != null ? request.getRejectionReason() : request.getRemarks());
+        letterService.cancelLetter(letterId, remarks);
+        return ResponseEntity.ok("Letter cancelled");
+    }
+
     @PostMapping(value = "/place", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<String> placeLetter(@Valid @ModelAttribute LetterPlaceRequestDto letterPlaceRequestDto) {
         letterService.placeLetter(letterPlaceRequestDto);

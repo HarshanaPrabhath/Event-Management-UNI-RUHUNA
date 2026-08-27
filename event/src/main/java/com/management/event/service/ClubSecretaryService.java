@@ -5,13 +5,14 @@ import com.management.event.dto.club.ClubResponseDto;
 import com.management.event.dto.club.SecretaryClubUpdateRequestDto;
 import com.management.event.entity.AppRole;
 import com.management.event.entity.Club;
-import com.management.event.entity.ClubSecretary;
+import com.management.event.entity.ClubExecutive;
+import com.management.event.entity.ClubExecutiveRole;
 import com.management.event.entity.User;
 import com.management.event.exception.BadRequestException;
 import com.management.event.exception.ForbiddenException;
 import com.management.event.exception.ResourceNotFoundException;
 import com.management.event.repository.ClubRepository;
-import com.management.event.repository.ClubSecretaryRepository;
+import com.management.event.repository.ClubExecutiveRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,7 +25,7 @@ import java.time.Instant;
 public class ClubSecretaryService {
 
     private final AuthenticatedUser authenticatedUser;
-    private final ClubSecretaryRepository clubSecretaryRepository;
+    private final ClubExecutiveRepository clubExecutiveRepository;
     private final ClubRepository clubRepository;
     private final ClubFileStorageService clubFileStorageService;
     private final UploadUrlMapper uploadUrlMapper;
@@ -64,7 +65,7 @@ public class ClubSecretaryService {
         if (!RoleUtil.hasRole(user, AppRole.ROLE_SECRETARY)) {
             throw new ForbiddenException("Secretary privileges required");
         }
-        ClubSecretary cs = clubSecretaryRepository.findByUser_RegNumber(user.getRegNumber())
+        ClubExecutive cs = clubExecutiveRepository.findByUser_RegNumberAndExecutiveRole(user.getRegNumber(), ClubExecutiveRole.SECRETARY)
                 .orElseThrow(() -> new ForbiddenException("No club assigned to this secretary"));
         Long clubId = cs.getClub().getId();
         return clubRepository.findById(clubId)
@@ -72,8 +73,11 @@ public class ClubSecretaryService {
     }
 
     private ClubResponseDto toDto(Club club) {
-        String sec = clubSecretaryRepository.findByClub_Id(club.getId())
-                .map(cs -> cs.getUser().getRegNumber())
+        String sec = clubExecutiveRepository.findByClub_IdAndExecutiveRole(club.getId(), ClubExecutiveRole.SECRETARY)
+                .map(ce -> ce.getUser().getRegNumber())
+                .orElse(null);
+        String st = clubExecutiveRepository.findByClub_IdAndExecutiveRole(club.getId(), ClubExecutiveRole.SENIOR_TREASURER)
+                .map(ce -> ce.getUser().getRegNumber())
                 .orElse(null);
         return ClubResponseDto.builder()
                 .id(club.getId())
@@ -84,6 +88,7 @@ public class ClubSecretaryService {
                 .description(club.getDescription())
                 .executiveBoardJson(club.getExecutiveBoardJson())
                 .secretaryRegNumber(sec)
+                .seniorTreasurerRegNumber(st)
                 .build();
     }
 

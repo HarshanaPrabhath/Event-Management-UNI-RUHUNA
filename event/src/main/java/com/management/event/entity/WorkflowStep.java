@@ -39,6 +39,12 @@ public class WorkflowStep {
     @Column(nullable = false)
     private boolean requiresSignature = true;
 
+    // If true, this step's approval creates/confirms the PENDING_BOOKING calendar reservation
+    // (the place-responsible person's step). Replaces the old "stepOrder == 1 && has place" check,
+    // since step 1 is now the club senior treasurer.
+    @Column(nullable = false)
+    private boolean createsBooking = false;
+
     // Optional predefined placement for the signature (PDF points).
     // If provided, the client can call sign endpoint without sending coordinates.
 //    private Integer signaturePageIndex;

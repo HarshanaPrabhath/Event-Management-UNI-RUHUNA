@@ -3,13 +3,14 @@ import com.management.event.dto.club.AdminClubUpsertRequestDto;
 import com.management.event.dto.club.ClubResponseDto;
 import com.management.event.entity.AppRole;
 import com.management.event.entity.Club;
-import com.management.event.entity.ClubSecretary;
+import com.management.event.entity.ClubExecutive;
+import com.management.event.entity.ClubExecutiveRole;
 import com.management.event.entity.Role;
 import com.management.event.entity.User;
 import com.management.event.exception.BadRequestException;
 import com.management.event.exception.ResourceNotFoundException;
 import com.management.event.repository.ClubRepository;
-import com.management.event.repository.ClubSecretaryRepository;
+import com.management.event.repository.ClubExecutiveRepository;
 import com.management.event.repository.RoleRepository;
 import com.management.event.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +26,7 @@ import java.util.List;
 public class ClubAdminService {
 
     private final ClubRepository clubRepository;
-    private final ClubSecretaryRepository clubSecretaryRepository;
+    private final ClubExecutiveRepository clubExecutiveRepository;
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final UploadUrlMapper uploadUrlMapper;
@@ -45,6 +46,7 @@ public class ClubAdminService {
         if (req == null) throw new BadRequestException("Request body is required");
         if (!StringUtils.hasText(req.getClubName())) throw new BadRequestException("clubName is required");
         if (!StringUtils.hasText(req.getSecretaryRegNumber())) throw new BadRequestException("secretaryRegNumber is required");
+        if (!StringUtils.hasText(req.getSeniorTreasurerRegNumber())) throw new BadRequestException("seniorTreasurerRegNumber is required");
         String name = req.getClubName().trim();
         if (clubRepository.existsByClubName(name)) throw new BadRequestException("clubName already exists");
 
@@ -59,7 +61,8 @@ public class ClubAdminService {
         club.setUpdatedAt(Instant.now());
         club = clubRepository.save(club);
 
-        assignSecretary(club.getId(), req.getSecretaryRegNumber().trim());
+        assignExecutive(club.getId(), req.getSecretaryRegNumber().trim(), ClubExecutiveRole.SECRETARY);
+        assignExecutive(club.getId(), req.getSeniorTreasurerRegNumber().trim(), ClubExecutiveRole.SENIOR_TREASURER);
         return toDto(club);
     }
 
@@ -85,9 +88,20 @@ public class ClubAdminService {
             // if empty => unassign, if non-empty => assign/replace
             String sec = req.getSecretaryRegNumber().trim();
             if (sec.isBlank()) {
-                clubSecretaryRepository.findByClub_Id(clubId).ifPresent(clubSecretaryRepository::delete);
+                clubExecutiveRepository.findByClub_IdAndExecutiveRole(clubId, ClubExecutiveRole.SECRETARY)
+                        .ifPresent(clubExecutiveRepository::delete);
             } else {
-                assignSecretary(clubId, sec);
+                assignExecutive(clubId, sec, ClubExecutiveRole.SECRETARY);
+            }
+        }
+        if (req.getSeniorTreasurerRegNumber() != null) {
+            // if empty => unassign, if non-empty => assign/replace
+            String st = req.getSeniorTreasurerRegNumber().trim();
+            if (st.isBlank()) {
+                clubExecutiveRepository.findByClub_IdAndExecutiveRole(clubId, ClubExecutiveRole.SENIOR_TREASURER)
+                        .ifPresent(clubExecutiveRepository::delete);
+            } else {
+                assignExecutive(clubId, st, ClubExecutiveRole.SENIOR_TREASURER);
             }
         }
         return toDto(club);
@@ -97,40 +111,53 @@ public class ClubAdminService {
     public void delete(Long clubId) {
         Club club = clubRepository.findById(clubId)
                 .orElseThrow(() -> new ResourceNotFoundException("Club", "id", clubId));
-        // Remove secretary mapping first to avoid FK issues.
-        clubSecretaryRepository.findByClub_Id(clubId).ifPresent(clubSecretaryRepository::delete);
+        // Remove mappings first to avoid FK issues.
+        clubExecutiveRepository.findByClub_IdAndExecutiveRole(clubId, ClubExecutiveRole.SECRETARY)
+                .ifPresent(clubExecutiveRepository::delete);
+        clubExecutiveRepository.findByClub_IdAndExecutiveRole(clubId, ClubExecutiveRole.SENIOR_TREASURER)
+                .ifPresent(clubExecutiveRepository::delete);
         clubRepository.delete(club);
     }
 
     @Transactional
-    public void assignSecretary(Long clubId, String secretaryRegNumber) {
+    public void assignExecutive(Long clubId, String regNumber, ClubExecutiveRole executiveRole) {
         Club club = clubRepository.findById(clubId)
                 .orElseThrow(() -> new ResourceNotFoundException("Club", "id", clubId));
-        User user = userRepository.findByRegNumber(secretaryRegNumber)
-                .orElseThrow(() -> new ResourceNotFoundException("User", "regNumber", secretaryRegNumber));
+        User user = userRepository.findByRegNumber(regNumber)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "regNumber", regNumber));
 
-        // Ensure ROLE_SECRETARY is present.
-        if (!RoleUtil.hasRole(user, AppRole.ROLE_SECRETARY)) {
-            Role secRole = roleRepository.findByRoleName(AppRole.ROLE_SECRETARY)
-                    .orElseThrow(() -> new BadRequestException("ROLE_SECRETARY missing in role table"));
-            user.getRoles().add(secRole);
+        // Ensure app-level role is present for the mapped executive role.
+        AppRole appRole = switch (executiveRole) {
+            case SECRETARY -> AppRole.ROLE_SECRETARY;
+            case SENIOR_TREASURER -> AppRole.ROLE_SENIOR_TRESURER;
+        };
+        if (!RoleUtil.hasRole(user, appRole)) {
+            Role role = roleRepository.findByRoleName(appRole)
+                    .orElseThrow(() -> new BadRequestException(appRole.name() + " missing in role table"));
+            user.getRoles().add(role);
             userRepository.save(user);
         }
 
-        // Replace existing mapping for this club, and also enforce one club per secretary user.
-        clubSecretaryRepository.findByClub_Id(clubId).ifPresent(clubSecretaryRepository::delete);
-        clubSecretaryRepository.findByUser_RegNumber(user.getRegNumber()).ifPresent(clubSecretaryRepository::delete);
+        // Replace existing mapping for this club+role, and also enforce one club per role per user.
+        clubExecutiveRepository.findByClub_IdAndExecutiveRole(clubId, executiveRole)
+                .ifPresent(clubExecutiveRepository::delete);
+        clubExecutiveRepository.findByUser_RegNumberAndExecutiveRole(user.getRegNumber(), executiveRole)
+                .ifPresent(clubExecutiveRepository::delete);
 
-        ClubSecretary cs = new ClubSecretary();
-        cs.setClub(club);
-        cs.setUser(user);
-        cs.setCreatedAt(Instant.now());
-        clubSecretaryRepository.save(cs);
+        ClubExecutive ce = new ClubExecutive();
+        ce.setClub(club);
+        ce.setUser(user);
+        ce.setExecutiveRole(executiveRole);
+        ce.setCreatedAt(Instant.now());
+        clubExecutiveRepository.save(ce);
     }
 
     private ClubResponseDto toDto(Club club) {
-        String sec = clubSecretaryRepository.findByClub_Id(club.getId())
-                .map(cs -> cs.getUser().getRegNumber())
+        String sec = clubExecutiveRepository.findByClub_IdAndExecutiveRole(club.getId(), ClubExecutiveRole.SECRETARY)
+                .map(ce -> ce.getUser().getRegNumber())
+                .orElse(null);
+        String st = clubExecutiveRepository.findByClub_IdAndExecutiveRole(club.getId(), ClubExecutiveRole.SENIOR_TREASURER)
+                .map(ce -> ce.getUser().getRegNumber())
                 .orElse(null);
         return ClubResponseDto.builder()
                 .id(club.getId())
@@ -141,6 +168,7 @@ public class ClubAdminService {
                 .description(club.getDescription())
                 .executiveBoardJson(club.getExecutiveBoardJson())
                 .secretaryRegNumber(sec)
+                .seniorTreasurerRegNumber(st)
                 .build();
     }
 

@@ -4,10 +4,12 @@ import com.management.event.config.AuthenticatedUser;
 import com.management.event.dto.club.AdminClubUpsertRequestDto;
 import com.management.event.dto.club.ClubResponseDto;
 import com.management.event.dto.club.ClubSecretaryResponseDto;
+import com.management.event.dto.club.ClubSeniorTreasurerResponseDto;
 import com.management.event.entity.AppRole;
 import com.management.event.entity.User;
 import com.management.event.exception.ForbiddenException;
 import com.management.event.service.AdminSecretaryService;
+import com.management.event.service.AdminSeniorTreasurerService;
 import com.management.event.service.ClubAdminService;
 import com.management.event.service.RoleUtil;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +33,7 @@ public class AdminClubController {
     private final AuthenticatedUser authenticatedUser;
     private final ClubAdminService clubAdminService;
     private final AdminSecretaryService adminSecretaryService;
+    private final AdminSeniorTreasurerService adminSeniorTreasurerService;
 
     @PostMapping
     public ResponseEntity<ClubResponseDto> create(@RequestBody AdminClubUpsertRequestDto req) {
@@ -50,6 +53,11 @@ public class AdminClubController {
         return ResponseEntity.ok(adminSecretaryService.listAllSecretaries());
     }
 
+    @GetMapping("/senior-treasurers")
+    public ResponseEntity<List<ClubSeniorTreasurerResponseDto>> listAllSeniorTreasurers() {
+        requireAdmin();
+        return ResponseEntity.ok(adminSeniorTreasurerService.listAllSeniorTreasurers());
+    }
 
     @PutMapping("/{clubId}")
     public ResponseEntity<ClubResponseDto> update(@PathVariable Long clubId, @RequestBody AdminClubUpsertRequestDto req) {

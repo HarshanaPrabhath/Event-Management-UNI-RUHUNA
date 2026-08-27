@@ -29,6 +29,21 @@ public class LetterToApproveResponseDto {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private LocalDateTime finalDecisionAt;
+
+    // Club this letter belongs to (new club flow).
+    private Long clubId;
+    private String clubName;
+
+    // Where a rejected letter is currently parked: "SENIOR_TREASURER" (bounced, awaiting re-forward
+    // decision), "SECRETARY" (returned for revision), or null.
+    private String returnStage;
+
+    // UI hints for the authenticated user viewing this letter.
+    private boolean canReforward;
+    private boolean canReturnToSecretary;
+    private boolean canResend;
+    private boolean canCancel;
+
     private SenderSummaryResponseDto sender;
     private List<ApproverSummaryResponseDto> previousApprovers;
     private ApproverSummaryResponseDto currentApprover;

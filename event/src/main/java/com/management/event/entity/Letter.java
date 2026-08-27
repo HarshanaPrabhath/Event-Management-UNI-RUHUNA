@@ -24,6 +24,11 @@ public class Letter {
     @JoinColumn(name = "user_reg_number", referencedColumnName = "reg_number", nullable = false)
     private User user;
 
+    // The club this letter belongs to. Nullable only for legacy rows created before the club flow.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "club_id")
+    private Club club;
+
     private String title;
 
     private LocalDate eventDate;

@@ -3,12 +3,17 @@ package com.management.event.security.config;
 import com.management.event.entity.AppRole;
 import com.management.event.entity.CalendarEvent;
 import com.management.event.entity.CalendarEventStatus;
+import com.management.event.entity.Club;
+import com.management.event.entity.ClubExecutive;
+import com.management.event.entity.ClubExecutiveRole;
 import com.management.event.entity.Letter;
 import com.management.event.entity.LetterStatus;
 import com.management.event.entity.Place;
 import com.management.event.entity.Role;
 import com.management.event.entity.User;
 import com.management.event.repository.CalendarEventRepository;
+import com.management.event.repository.ClubExecutiveRepository;
+import com.management.event.repository.ClubRepository;
 import com.management.event.repository.LetterRepository;
 import com.management.event.repository.PlaceRepository;
 import com.management.event.repository.RoleRepository;
@@ -95,7 +100,9 @@ public class ApplicationConfig {
                                        PasswordEncoder passwordEncoder,
                                        PlaceRepository placeRepository,
                                        LetterRepository letterRepository,
-                                       CalendarEventRepository calendarEventRepository) {
+                                       CalendarEventRepository calendarEventRepository,
+                                       ClubRepository clubRepository,
+                                       ClubExecutiveRepository clubExecutiveRepository) {
         return args -> {
             for (AppRole appRole : AppRole.values()) {
                 if (roleRepository.findByRoleName(appRole).isEmpty()) {
@@ -107,6 +114,8 @@ public class ApplicationConfig {
             Role adminRole = roleRepository.findByRoleName(AppRole.ROLE_ADMIN).orElseThrow();
             Role lecturerRole = roleRepository.findByRoleName(AppRole.ROLE_LECTURER).orElseThrow();
             Role deanRole = roleRepository.findByRoleName(AppRole.ROLE_DEAN).orElseThrow();
+            Role secretaryRole = roleRepository.findByRoleName(AppRole.ROLE_SECRETARY).orElseThrow();
+            Role seniorTreasurerRole = roleRepository.findByRoleName(AppRole.ROLE_SENIOR_TRESURER).orElseThrow();
 
             if (userRepository.findByEmail("john@example.com").isEmpty()) {
                 User user1 = new User();
@@ -214,6 +223,54 @@ public class ApplicationConfig {
                         new Place(null, "Ground",     "All",  null, dOffice),
                         new Place(null, "King Road",  "All",  null, dOffice)
                 ));
+            }
+
+            // Demo club with a secretary and a senior treasurer (idempotent), so the club letter flow
+            // is testable without first calling /api/admin/clubs.
+            if (userRepository.findByRegNumber("CLUB-SEC-01").isEmpty()) {
+                User clubSecretary = new User();
+                clubSecretary.setUserName("club-secretary");
+                clubSecretary.setEmail("club.secretary@example.com");
+                clubSecretary.setRegNumber("CLUB-SEC-01");
+                clubSecretary.setPassword(passwordEncoder.encode("1234"));
+                clubSecretary.setRoles(new HashSet<>(List.of(secretaryRole)));
+                userRepository.save(clubSecretary);
+            }
+            if (userRepository.findByRegNumber("CLUB-ST-01").isEmpty()) {
+                User clubSeniorTreasurer = new User();
+                clubSeniorTreasurer.setUserName("club-senior-treasurer");
+                clubSeniorTreasurer.setEmail("club.senior.treasurer@example.com");
+                clubSeniorTreasurer.setRegNumber("CLUB-ST-01");
+                clubSeniorTreasurer.setPassword(passwordEncoder.encode("1234"));
+                clubSeniorTreasurer.setRoles(new HashSet<>(List.of(seniorTreasurerRole)));
+                userRepository.save(clubSeniorTreasurer);
+            }
+            if (clubRepository.findByClubName("Computer Society").isEmpty()) {
+                Club club = new Club();
+                club.setClubName("Computer Society");
+                club.setCreatedAt(java.time.Instant.now());
+                club.setUpdatedAt(java.time.Instant.now());
+                club = clubRepository.save(club);
+
+                User clubSecretary = userRepository.findByRegNumber("CLUB-SEC-01").orElseThrow();
+                User clubSeniorTreasurer = userRepository.findByRegNumber("CLUB-ST-01").orElseThrow();
+
+                if (clubExecutiveRepository.findByClub_IdAndExecutiveRole(club.getId(), ClubExecutiveRole.SECRETARY).isEmpty()) {
+                    ClubExecutive sec = new ClubExecutive();
+                    sec.setClub(club);
+                    sec.setUser(clubSecretary);
+                    sec.setExecutiveRole(ClubExecutiveRole.SECRETARY);
+                    sec.setCreatedAt(java.time.Instant.now());
+                    clubExecutiveRepository.save(sec);
+                }
+                if (clubExecutiveRepository.findByClub_IdAndExecutiveRole(club.getId(), ClubExecutiveRole.SENIOR_TREASURER).isEmpty()) {
+                    ClubExecutive st = new ClubExecutive();
+                    st.setClub(club);
+                    st.setUser(clubSeniorTreasurer);
+                    st.setExecutiveRole(ClubExecutiveRole.SENIOR_TREASURER);
+                    st.setCreatedAt(java.time.Instant.now());
+                    clubExecutiveRepository.save(st);
+                }
             }
 
             // Seed 3 calendar events for May 2026 (idempotent).

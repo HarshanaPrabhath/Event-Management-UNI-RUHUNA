@@ -53,6 +53,9 @@ public class AuthenticationService {
                     case "secretary" ->
                             roles.add(roleRepository.findByRoleName(AppRole.ROLE_SECRETARY)
                                     .orElseThrow(() -> new RuntimeException("Error: Role not found: secretary")));
+                    case "senior_treasurer", "senior-treasurer", "senior treasurer" ->
+                            roles.add(roleRepository.findByRoleName(AppRole.ROLE_SENIOR_TRESURER)
+                                    .orElseThrow(() -> new RuntimeException("Error: Role not found: senior_treasurer")));
                     case "lecturer" ->
                             roles.add(roleRepository.findByRoleName(AppRole.ROLE_LECTURER)
                                     .orElseThrow(() -> new RuntimeException("Error: Role not found: lecturer")));
