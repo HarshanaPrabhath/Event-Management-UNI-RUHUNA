@@ -148,7 +148,13 @@ public class LetterService {
         if (letterPlaceRequestDto.getLetterPdf() == null || letterPlaceRequestDto.getLetterPdf().isEmpty()) {
             throw new ApiException("Letter PDF is required");
         }
-        if (letterPlaceRequestDto.getApprovers() == null || letterPlaceRequestDto.getApprovers().isEmpty()) {
+        boolean hasPlace = StringUtils.hasText(letterPlaceRequestDto.getPlaceName());
+        List<ApproverDto> approverDtos = letterPlaceRequestDto.getApprovers() == null
+                ? List.of()
+                : letterPlaceRequestDto.getApprovers();
+        // A venue-only chain (venue's responsible person -> senior treasurer) needs no manual
+        // approvers; without a venue at least one manual approver is required.
+        if (approverDtos.isEmpty() && !hasPlace) {
             throw new ApiException("At least one approver is required");
         }
         if (letterPlaceRequestDto.getEventTime() != null
@@ -157,7 +163,7 @@ public class LetterService {
             throw new ApiException("eventEndTime must be after eventTime");
         }
 
-        List<User> manualApprovers = resolveApprovers(letterPlaceRequestDto.getApprovers());
+        List<User> manualApprovers = resolveApprovers(approverDtos);
 
         if (StringUtils.hasText(letterPlaceRequestDto.getPlaceName())
                 && letterPlaceRequestDto.getEventDate() != null
@@ -217,8 +223,10 @@ public class LetterService {
         currentStep.setActedAt(LocalDateTime.now());
         letter.setRejectionReason(rejectionText);
 
-        WorkflowStep firstStep = steps.stream()
-                .filter(s -> s.getStepOrder() != null && s.getStepOrder() == 1)
+        // The senior treasurer is identified by role (requiresSignature), not by position -
+        // the place-responsible person (TO) can now sit ahead of them in stepOrder.
+        WorkflowStep treasurerStep = steps.stream()
+                .filter(WorkflowStep::isRequiresSignature)
                 .findFirst()
                 .orElse(null);
 
@@ -232,10 +240,10 @@ public class LetterService {
             return;
         }
 
-        boolean seniorTreasurerRejected = currentStep.getStepOrder() != null && currentStep.getStepOrder() == 1;
+        boolean seniorTreasurerRejected = currentStep.isRequiresSignature();
 
-        if (seniorTreasurerRejected || firstStep == null) {
-            // Senior treasurer (step 1) rejected -> return straight to the club secretary.
+        if (seniorTreasurerRejected || treasurerStep == null) {
+            // Senior treasurer rejected -> return straight to the club secretary.
             letter.setGlobalStatus(LetterStatus.RETURNED_TO_SECRETARY);
             workflowStepRepository.saveAll(steps);
             letterRepository.save(letter);
@@ -244,16 +252,17 @@ public class LetterService {
             return;
         }
 
-        // A downstream approver rejected -> bounce back to the senior treasurer with the reason.
-        firstStep.setStatus(StepStatus.CURRENT);
-        firstStep.setAssignedAt(LocalDateTime.now());
-        firstStep.setActedAt(null);
+        // Anyone else (TO ahead of the treasurer, or a downstream approver) rejected -> bounce
+        // back to the senior treasurer with the reason.
+        treasurerStep.setStatus(StepStatus.CURRENT);
+        treasurerStep.setAssignedAt(LocalDateTime.now());
+        treasurerStep.setActedAt(null);
         letter.setGlobalStatus(bookingHeld(steps) ? LetterStatus.PENDING_BOOKING : LetterStatus.PENDING);
 
         workflowStepRepository.saveAll(steps);
         letterRepository.save(letter);
 
-        emailNotificationService.notifySeniorTreasurerBounce(letter, currentUser, rejectionText, firstStep.getUser());
+        emailNotificationService.notifySeniorTreasurerBounce(letter, currentUser, rejectionText, treasurerStep.getUser());
     }
 
     @Transactional
@@ -372,11 +381,11 @@ public class LetterService {
         if (!currentStep.getUser().getRegNumber().equals(currentUser.getRegNumber())) {
             throw new ApiException("You are not the current approver for this letter");
         }
-        if (currentStep.getStepOrder() == null || currentStep.getStepOrder() != 1) {
+        if (!currentStep.isRequiresSignature()) {
             throw new ApiException("Only the senior treasurer step can return a letter to the secretary");
         }
         boolean bounced = steps.stream()
-                .anyMatch(s -> s.getStepOrder() != null && s.getStepOrder() > 1 && s.getStatus() == StepStatus.REJECTED);
+                .anyMatch(s -> !s.isRequiresSignature() && s.getStatus() == StepStatus.REJECTED);
         if (!bounced) {
             throw new ApiException("This letter is not awaiting a re-forward decision. Use reject to send it back.");
         }
@@ -443,12 +452,13 @@ public class LetterService {
             manualApprovers = resolveApprovers(request.getApprovers());
         } else {
             manualApprovers = oldSteps.stream()
-                    .filter(s -> s.getStepOrder() != null && s.getStepOrder() > 1 && !s.isCreatesBooking())
+                    .filter(s -> !s.isRequiresSignature() && !s.isCreatesBooking())
                     .sorted(Comparator.comparingInt(WorkflowStep::getStepOrder))
                     .map(WorkflowStep::getUser)
                     .toList();
         }
-        if (manualApprovers.isEmpty()) {
+        // Venue-only chains (venue's responsible person -> senior treasurer) carry no manual approvers.
+        if (manualApprovers.isEmpty() && !StringUtils.hasText(letter.getEventPlace())) {
             throw new ApiException("At least one approver is required");
         }
 
@@ -526,14 +536,13 @@ public class LetterService {
         currentStep.setRemarks(remarks);
         currentStep.setActedAt(LocalDateTime.now());
 
-        boolean bouncedReforward = currentStep.getStepOrder() != null && currentStep.getStepOrder() == 1
-                && steps.stream().anyMatch(s -> s.getStepOrder() != null && s.getStepOrder() > 1
-                        && s.getStatus() == StepStatus.REJECTED);
+        boolean bouncedReforward = currentStep.isRequiresSignature()
+                && steps.stream().anyMatch(s -> !s.isRequiresSignature() && s.getStatus() == StepStatus.REJECTED);
 
         WorkflowStep nextStep;
         if (bouncedReforward) {
             nextStep = steps.stream()
-                    .filter(s -> s.getStepOrder() != null && s.getStepOrder() > 1 && s.getStatus() == StepStatus.REJECTED)
+                    .filter(s -> !s.isRequiresSignature() && s.getStatus() == StepStatus.REJECTED)
                     .min(Comparator.comparingInt(WorkflowStep::getStepOrder))
                     .orElse(null);
             if (nextStep != null) {
@@ -583,7 +592,6 @@ public class LetterService {
      */
     private List<WorkflowStep> buildAndSaveSteps(Letter letter, User seniorTreasurer, List<User> manualApprovers) {
         List<User> ordered = new ArrayList<>();
-        ordered.add(seniorTreasurer);
 
         String placeResponsibleReg = null;
         if (StringUtils.hasText(letter.getEventPlace())) {
@@ -594,9 +602,13 @@ public class LetterService {
             }
             placeResponsibleReg = place.getResponsiblePerson().getRegNumber();
             if (!placeResponsibleReg.equals(seniorTreasurer.getRegNumber())) {
+                // The place's responsible person (TO) clears the venue before the senior
+                // treasurer signs off, so they lead the pipeline when a venue is requested.
                 ordered.add(place.getResponsiblePerson());
             }
         }
+
+        ordered.add(seniorTreasurer);
 
         for (User approver : manualApprovers) {
             boolean already = ordered.stream().anyMatch(u -> u.getRegNumber().equals(approver.getRegNumber()));
@@ -613,6 +625,7 @@ public class LetterService {
         for (int i = 0; i < ordered.size(); i++) {
             User user = ordered.get(i);
             boolean isPlaceResponsible = placeResponsibleReg != null && user.getRegNumber().equals(placeResponsibleReg);
+            boolean isSeniorTreasurer = user.getRegNumber().equals(seniorTreasurer.getRegNumber());
 
             WorkflowStep step = new WorkflowStep();
             step.setLetter(letter);
@@ -622,9 +635,9 @@ public class LetterService {
             if (i == 0) {
                 step.setAssignedAt(LocalDateTime.now());
             }
-            // Step 1 (senior treasurer) always signs. The place-responsible person approves without a
-            // signature and is the step that creates the booking.
-            step.setRequiresSignature(i == 0 || !isPlaceResponsible);
+            // Only the senior treasurer signs, regardless of where they land in the order. The
+            // place-responsible person (TO) approves without a signature and creates the booking.
+            step.setRequiresSignature(isSeniorTreasurer);
             step.setCreatesBooking(isPlaceResponsible);
             steps.add(step);
         }
@@ -702,13 +715,16 @@ public class LetterService {
                 .orElse(null);
 
         if (currentStep != null) {
+            // Split by actual status, not raw stepOrder: a re-forward after a bounce can move
+            // CURRENT back to a step whose order is lower than an already-APPROVED step (when the
+            // place-responsible person precedes the senior treasurer in the chain).
             response.setPreviousApprovers(steps.stream()
-                    .filter(step -> step.getStepOrder() < currentStep.getStepOrder())
+                    .filter(step -> step.getStatus() == StepStatus.APPROVED || step.getStatus() == StepStatus.REJECTED)
                     .map(this::mapApprover)
                     .toList());
             response.setCurrentApprover(mapApprover(currentStep));
             response.setNextApprovers(steps.stream()
-                    .filter(step -> step.getStepOrder() > currentStep.getStepOrder())
+                    .filter(step -> step.getStatus() == StepStatus.WAITING)
                     .map(this::mapApprover)
                     .toList());
         } else {
@@ -717,9 +733,9 @@ public class LetterService {
             response.setNextApprovers(List.of());
         }
 
-        // Bounced letters sit on the senior treasurer (step 1) while a downstream step is REJECTED.
-        boolean bounced = currentStep != null && currentStep.getStepOrder() != null && currentStep.getStepOrder() == 1
-                && steps.stream().anyMatch(s -> s.getStepOrder() != null && s.getStepOrder() > 1 && s.getStatus() == StepStatus.REJECTED);
+        // Bounced letters sit on the senior treasurer while another step is REJECTED.
+        boolean bounced = currentStep != null && currentStep.isRequiresSignature()
+                && steps.stream().anyMatch(s -> !s.isRequiresSignature() && s.getStatus() == StepStatus.REJECTED);
         boolean isCurrentUserStep = currentStep != null && currentUserRegNumber != null
                 && currentUserRegNumber.equals(currentStep.getUser().getRegNumber());
         boolean returned = letter.getGlobalStatus() == LetterStatus.RETURNED_TO_SECRETARY;
