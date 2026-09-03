@@ -19,4 +19,5 @@ public class ClubResponseDto {
     private String executiveBoardJson;
     private String secretaryRegNumber; // resolved from club_executive if assigned
     private String seniorTreasurerRegNumber; // resolved from club_executive if assigned
+    private String seniorTreasurerName; // resolved from club_executive if assigned
 }

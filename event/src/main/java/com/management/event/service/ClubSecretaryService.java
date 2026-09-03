@@ -76,8 +76,7 @@ public class ClubSecretaryService {
         String sec = clubExecutiveRepository.findByClub_IdAndExecutiveRole(club.getId(), ClubExecutiveRole.SECRETARY)
                 .map(ce -> ce.getUser().getRegNumber())
                 .orElse(null);
-        String st = clubExecutiveRepository.findByClub_IdAndExecutiveRole(club.getId(), ClubExecutiveRole.SENIOR_TREASURER)
-                .map(ce -> ce.getUser().getRegNumber())
+        var stExec = clubExecutiveRepository.findByClub_IdAndExecutiveRole(club.getId(), ClubExecutiveRole.SENIOR_TREASURER)
                 .orElse(null);
         return ClubResponseDto.builder()
                 .id(club.getId())
@@ -88,7 +87,8 @@ public class ClubSecretaryService {
                 .description(club.getDescription())
                 .executiveBoardJson(club.getExecutiveBoardJson())
                 .secretaryRegNumber(sec)
-                .seniorTreasurerRegNumber(st)
+                .seniorTreasurerRegNumber(stExec == null ? null : stExec.getUser().getRegNumber())
+                .seniorTreasurerName(stExec == null ? null : stExec.getUser().getUserName())
                 .build();
     }
 
