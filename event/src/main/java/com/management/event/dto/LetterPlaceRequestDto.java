@@ -35,4 +35,11 @@ public class LetterPlaceRequestDto {
 
     @Valid
     private List<ApproverDto> approvers;
+
+    @Valid
+    private List<ResourceRequestItemDto> resources;
+
+    // Standalone equipment (not tied to the chosen place) requested for this letter.
+    @Valid
+    private List<ResourceRequestItemDto> generalResources;
 }

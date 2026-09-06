@@ -8,5 +8,6 @@ public class SecretaryClubUpdateRequestDto {
     private String mission; // nullable
     private String description;
     private String executiveBoardJson; // JSON string
+    private String membersJson; // JSON string
 }
 

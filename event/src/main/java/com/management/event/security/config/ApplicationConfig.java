@@ -4,15 +4,12 @@ import com.management.event.entity.AppRole;
 import com.management.event.entity.CalendarEvent;
 import com.management.event.entity.CalendarEventStatus;
 import com.management.event.entity.Club;
-import com.management.event.entity.ClubExecutive;
-import com.management.event.entity.ClubExecutiveRole;
 import com.management.event.entity.Letter;
 import com.management.event.entity.LetterStatus;
 import com.management.event.entity.Place;
 import com.management.event.entity.Role;
 import com.management.event.entity.User;
 import com.management.event.repository.CalendarEventRepository;
-import com.management.event.repository.ClubExecutiveRepository;
 import com.management.event.repository.ClubRepository;
 import com.management.event.repository.LetterRepository;
 import com.management.event.repository.PlaceRepository;
@@ -101,8 +98,7 @@ public class ApplicationConfig {
                                        PlaceRepository placeRepository,
                                        LetterRepository letterRepository,
                                        CalendarEventRepository calendarEventRepository,
-                                       ClubRepository clubRepository,
-                                       ClubExecutiveRepository clubExecutiveRepository) {
+                                       ClubRepository clubRepository) {
         return args -> {
             for (AppRole appRole : AppRole.values()) {
                 if (roleRepository.findByRoleName(appRole).isEmpty()) {
@@ -214,14 +210,14 @@ public class ApplicationConfig {
                 User dOffice = userRepository.findByRegNumber("D-OFFICE-01").orElseThrow();
 
                 placeRepository.saveAll(List.of(
-                        new Place(null, "Auditorium", "All",  450,  dOffice),
-                        new Place(null, "Lab11",      "ICT",  80,   ictTo),
-                        new Place(null, "Lab12",      "ICT",  110,  ictTo),
-                        new Place(null, "NBLLT",      "ET",   200,  etTo),
-                        new Place(null, "LH210",      "ET",   500,  etTo),
-                        new Place(null, "BST12",      "BST",  120,  bstTo),
-                        new Place(null, "Ground",     "All",  null, dOffice),
-                        new Place(null, "King Road",  "All",  null, dOffice)
+                        new Place(null, "Auditorium", "All",  450,  null, dOffice),
+                        new Place(null, "Lab11",      "ICT",  80,   null, ictTo),
+                        new Place(null, "Lab12",      "ICT",  110,  null, ictTo),
+                        new Place(null, "NBLLT",      "ET",   200,  null, etTo),
+                        new Place(null, "LH210",      "ET",   500,  null, etTo),
+                        new Place(null, "BST12",      "BST",  120,  null, bstTo),
+                        new Place(null, "Ground",     "All",  null, null, dOffice),
+                        new Place(null, "King Road",  "All",  null, null, dOffice)
                 ));
             }
 
@@ -248,29 +244,11 @@ public class ApplicationConfig {
             if (clubRepository.findByClubName("Computer Society").isEmpty()) {
                 Club club = new Club();
                 club.setClubName("Computer Society");
+                club.setSecretaryRegNumber("CLUB-SEC-01");
+                club.setSeniorTreasurerRegNumber("CLUB-ST-01");
                 club.setCreatedAt(java.time.Instant.now());
                 club.setUpdatedAt(java.time.Instant.now());
-                club = clubRepository.save(club);
-
-                User clubSecretary = userRepository.findByRegNumber("CLUB-SEC-01").orElseThrow();
-                User clubSeniorTreasurer = userRepository.findByRegNumber("CLUB-ST-01").orElseThrow();
-
-                if (clubExecutiveRepository.findByClub_IdAndExecutiveRole(club.getId(), ClubExecutiveRole.SECRETARY).isEmpty()) {
-                    ClubExecutive sec = new ClubExecutive();
-                    sec.setClub(club);
-                    sec.setUser(clubSecretary);
-                    sec.setExecutiveRole(ClubExecutiveRole.SECRETARY);
-                    sec.setCreatedAt(java.time.Instant.now());
-                    clubExecutiveRepository.save(sec);
-                }
-                if (clubExecutiveRepository.findByClub_IdAndExecutiveRole(club.getId(), ClubExecutiveRole.SENIOR_TREASURER).isEmpty()) {
-                    ClubExecutive st = new ClubExecutive();
-                    st.setClub(club);
-                    st.setUser(clubSeniorTreasurer);
-                    st.setExecutiveRole(ClubExecutiveRole.SENIOR_TREASURER);
-                    st.setCreatedAt(java.time.Instant.now());
-                    clubExecutiveRepository.save(st);
-                }
+                clubRepository.save(club);
             }
 
             // Seed 3 calendar events for May 2026 (idempotent).

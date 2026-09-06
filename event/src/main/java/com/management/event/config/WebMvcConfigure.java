@@ -26,7 +26,9 @@ public class WebMvcConfigure implements WebMvcConfigurer {
     public void addCorsMappings(CorsRegistry registry) {
 
         registry.addMapping("/**")
-                .allowedOrigins("http://localhost:5173")
+                // Vite auto-bumps to the next free port (5173, 5174, 5175, ...) when one is
+                // already taken, so pin to a single port is fragile. Match localhost on any port.
+                .allowedOriginPatterns("http://localhost:*")
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .allowCredentials(true);

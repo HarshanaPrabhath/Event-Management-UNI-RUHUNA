@@ -1,32 +1,18 @@
 package com.management.event.dto;
 
-
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
-
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class PlaceSendDto {
-
-    private Long placeId;
-
-    private String placeName;
-
-    private String department;
-
-    private Integer capacity;
-
-    private String photoUrl;
-
+public class GeneralResourceResponseDto {
+    private Long id;
+    private String name;
+    private Integer quantity;
     private String responsiblePersonRegNumber;
-
     private String responsiblePersonName;
-
-    private List<PlaceResourceResponseDto> resources;
 }

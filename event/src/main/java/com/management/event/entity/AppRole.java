@@ -6,5 +6,6 @@ public enum AppRole {
     ROLE_SENIOR_TRESURER,
     ROLE_LECTURER,
     ROLE_DEAN,
+    ROLE_TO,
     ROLE_USER
 }

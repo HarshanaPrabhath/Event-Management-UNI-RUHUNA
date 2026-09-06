@@ -35,6 +35,20 @@ public class AuthenticationService {
     private final RoleRepository roleRepository;
 
     public RegisterResponse register(RegisterRequest request) {
+        User savedUser = createUser(request);
+        ResponseCookie jwtCookie = jwtService.generateJwtCookie(UserDetailsImpl.build(savedUser));
+        return new RegisterResponse(toUserInfoResponse(savedUser), jwtCookie);
+    }
+
+    // Used by admins to create accounts on behalf of others. Unlike register(), this must NOT
+    // issue a JWT cookie - doing so would overwrite the calling admin's own session cookie in
+    // the browser, silently logging them out and back in as the newly created (lower-privileged) user.
+    public UserInfoResponse registerByAdmin(RegisterRequest request) {
+        User savedUser = createUser(request);
+        return toUserInfoResponse(savedUser);
+    }
+
+    private User createUser(RegisterRequest request) {
         String encodedPassword = passwordEncoder.encode(request.getPassword());
 
         Set<String> strRoles = request.getRole() != null ? request.getRole() : new HashSet<>();
@@ -62,6 +76,9 @@ public class AuthenticationService {
                     case "dean" ->
                             roles.add(roleRepository.findByRoleName(AppRole.ROLE_DEAN)
                                     .orElseThrow(() -> new RuntimeException("Error: Role not found: dean")));
+                    case "to", "technical_officer", "technical-officer", "technical officer" ->
+                            roles.add(roleRepository.findByRoleName(AppRole.ROLE_TO)
+                                    .orElseThrow(() -> new RuntimeException("Error: Role not found: to")));
                     default ->
                             roles.add(roleRepository.findByRoleName(AppRole.ROLE_USER)
                                     .orElseThrow(() -> new RuntimeException("Error: Role not found: user")));
@@ -76,20 +93,19 @@ public class AuthenticationService {
         user.setPassword(encodedPassword);
         user.setRoles(roles);
 
-        User savedUser = userRepository.save(user);
-        ResponseCookie jwtCookie = jwtService.generateJwtCookie(UserDetailsImpl.build(savedUser));
+        return userRepository.save(user);
+    }
 
-        UserInfoResponse userInfoResponse = UserInfoResponse.builder()
-                .username(savedUser.getUserName())
-                .email(savedUser.getEmail())
-                .regNumber(savedUser.getRegNumber())
-                .roles(savedUser.getRoles()
+    private UserInfoResponse toUserInfoResponse(User user) {
+        return UserInfoResponse.builder()
+                .username(user.getUserName())
+                .email(user.getEmail())
+                .regNumber(user.getRegNumber())
+                .roles(user.getRoles()
                         .stream()
                         .map(role -> role.getRoleName().name())
                         .collect(Collectors.toList()))
                 .build();
-
-        return new RegisterResponse(userInfoResponse, jwtCookie);
     }
 
     public ResponseEntity<UserInfoResponse> authenticate(LoginRequest request) {

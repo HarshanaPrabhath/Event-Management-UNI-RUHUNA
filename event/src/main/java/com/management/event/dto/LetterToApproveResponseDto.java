@@ -44,6 +44,8 @@ public class LetterToApproveResponseDto {
     private boolean canResend;
     private boolean canCancel;
 
+    private List<ResourceRequestResponseDto> resourceRequests;
+
     private SenderSummaryResponseDto sender;
     private List<ApproverSummaryResponseDto> previousApprovers;
     private ApproverSummaryResponseDto currentApprover;

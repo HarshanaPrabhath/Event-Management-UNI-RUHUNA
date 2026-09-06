@@ -5,8 +5,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.Instant;
-
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -18,7 +16,5 @@ public class ClubSeniorTreasurerResponseDto {
 
     private Long clubId;
     private String clubName;
-
-    private Instant assignedAt;
 }
 

@@ -45,6 +45,11 @@ public class WorkflowStep {
     @Column(nullable = false)
     private boolean createsBooking = false;
 
+    // True for a step injected because the letter requested equipment/resources owned by a
+    // department - distinguishes it from a manually-added approver when rebuilding steps on resend.
+    @Column(nullable = false)
+    private boolean resourceApprover = false;
+
     // Optional predefined placement for the signature (PDF points).
     // If provided, the client can call sign endpoint without sending coordinates.
 //    private Integer signaturePageIndex;

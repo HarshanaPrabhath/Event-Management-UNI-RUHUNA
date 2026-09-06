@@ -7,12 +7,16 @@ import com.management.event.dto.LetterPlaceRequestDto;
 import com.management.event.dto.LetterApproveRequestDto;
 import com.management.event.dto.LetterRejectRequestDto;
 import com.management.event.dto.LetterToApproveResponseDto;
+import com.management.event.dto.ResourceRequestItemDto;
+import com.management.event.dto.ResourceRequestResponseDto;
 import com.management.event.dto.SenderSummaryResponseDto;
 import com.management.event.entity.AppRole;
 import com.management.event.entity.Club;
-import com.management.event.entity.ClubExecutiveRole;
+import com.management.event.entity.GeneralResource;
 import com.management.event.entity.Letter;
+import com.management.event.entity.LetterResourceRequest;
 import com.management.event.entity.LetterStatus;
+import com.management.event.entity.PlaceResource;
 import com.management.event.entity.StepStatus;
 import com.management.event.entity.User;
 import com.management.event.entity.WorkflowStep;
@@ -20,9 +24,11 @@ import com.management.event.exception.ApiException;
 import com.management.event.exception.ForbiddenException;
 import com.management.event.exception.ResourceNotFoundException;
 import com.management.event.entity.Place;
-import com.management.event.repository.ClubExecutiveRepository;
+import com.management.event.repository.ClubRepository;
+import com.management.event.repository.GeneralResourceRepository;
 import com.management.event.repository.LetterRepository;
 import com.management.event.repository.PlaceRepository;
+import com.management.event.repository.PlaceResourceRepository;
 import com.management.event.repository.UserRepository;
 import com.management.event.repository.WorkflowStepRepository;
 import jakarta.validation.Valid;
@@ -56,7 +62,9 @@ public class LetterService {
     private final AuthenticatedUser authenticatedUser;
     private final WorkflowStepRepository workflowStepRepository;
     private final PlaceRepository placeRepository;
-    private final ClubExecutiveRepository clubExecutiveRepository;
+    private final PlaceResourceRepository placeResourceRepository;
+    private final GeneralResourceRepository generalResourceRepository;
+    private final ClubRepository clubRepository;
     private final CalendarEventService calendarEventService;
     private final ModelMapper modelMapper;
     private final PdfSigningService pdfSigningService;
@@ -164,6 +172,11 @@ public class LetterService {
         }
 
         List<User> manualApprovers = resolveApprovers(approverDtos);
+        ResolvedResources placeResources = resolvePlaceResourceRequests(
+                letterPlaceRequestDto.getPlaceName(), letterPlaceRequestDto.getResources()
+        );
+        ResolvedResources generalResources = resolveGeneralResourceRequests(letterPlaceRequestDto.getGeneralResources());
+        ResolvedResources resolvedResources = mergeResolved(placeResources, generalResources);
 
         if (StringUtils.hasText(letterPlaceRequestDto.getPlaceName())
                 && letterPlaceRequestDto.getEventDate() != null
@@ -189,10 +202,14 @@ public class LetterService {
         letter.setDescription(letterPlaceRequestDto.getDescription());
         letter.setPdfPath(storePdf(letterPlaceRequestDto.getLetterPdf()));
         letter.setGlobalStatus(LetterStatus.PENDING);
+        attachResourceRequests(letter, resolvedResources);
 
         Letter savedLetter = letterRepository.save(letter);
 
-        List<WorkflowStep> steps = buildAndSaveSteps(savedLetter, seniorTreasurer, manualApprovers);
+        List<WorkflowStep> steps = buildAndSaveSteps(
+                savedLetter, seniorTreasurer, manualApprovers,
+                placeResources.responsiblePersons(), generalResources.responsiblePersons()
+        );
 
         emailNotificationService.notifyApproverAssigned(savedLetter, steps.get(0).getUser());
     }
@@ -223,13 +240,6 @@ public class LetterService {
         currentStep.setActedAt(LocalDateTime.now());
         letter.setRejectionReason(rejectionText);
 
-        // The senior treasurer is identified by role (requiresSignature), not by position -
-        // the place-responsible person (TO) can now sit ahead of them in stepOrder.
-        WorkflowStep treasurerStep = steps.stream()
-                .filter(WorkflowStep::isRequiresSignature)
-                .findFirst()
-                .orElse(null);
-
         // Legacy letters (created before the club flow) keep the old terminal rejection.
         if (letter.getClub() == null) {
             letter.setGlobalStatus(LetterStatus.REJECTED);
@@ -240,7 +250,10 @@ public class LetterService {
             return;
         }
 
-        boolean seniorTreasurerRejected = currentStep.isRequiresSignature();
+        // The senior treasurer is identified by their club assignment, not by requiresSignature -
+        // that flag is now also true for general-equipment approvers, who must sign too.
+        WorkflowStep treasurerStep = findTreasurerStep(letter, steps);
+        boolean seniorTreasurerRejected = isTreasurerStep(letter, currentStep);
 
         if (seniorTreasurerRejected || treasurerStep == null) {
             // Senior treasurer rejected -> return straight to the club secretary.
@@ -381,16 +394,17 @@ public class LetterService {
         if (!currentStep.getUser().getRegNumber().equals(currentUser.getRegNumber())) {
             throw new ApiException("You are not the current approver for this letter");
         }
-        if (!currentStep.isRequiresSignature()) {
+
+        Letter letter = currentStep.getLetter();
+        if (!isTreasurerStep(letter, currentStep)) {
             throw new ApiException("Only the senior treasurer step can return a letter to the secretary");
         }
         boolean bounced = steps.stream()
-                .anyMatch(s -> !s.isRequiresSignature() && s.getStatus() == StepStatus.REJECTED);
+                .anyMatch(s -> !isTreasurerStep(letter, s) && s.getStatus() == StepStatus.REJECTED);
         if (!bounced) {
             throw new ApiException("This letter is not awaiting a re-forward decision. Use reject to send it back.");
         }
 
-        Letter letter = currentStep.getLetter();
         String reason = trimToNull(remarks);
         currentStep.setStatus(StepStatus.REJECTED);
         currentStep.setRemarks(reason);
@@ -452,7 +466,7 @@ public class LetterService {
             manualApprovers = resolveApprovers(request.getApprovers());
         } else {
             manualApprovers = oldSteps.stream()
-                    .filter(s -> !s.isRequiresSignature() && !s.isCreatesBooking())
+                    .filter(s -> !s.isRequiresSignature() && !s.isCreatesBooking() && !s.isResourceApprover())
                     .sorted(Comparator.comparingInt(WorkflowStep::getStepOrder))
                     .map(WorkflowStep::getUser)
                     .toList();
@@ -460,6 +474,19 @@ public class LetterService {
         // Venue-only chains (venue's responsible person -> senior treasurer) carry no manual approvers.
         if (manualApprovers.isEmpty() && !StringUtils.hasText(letter.getEventPlace())) {
             throw new ApiException("At least one approver is required");
+        }
+
+        List<User> placeResourceResponsiblePersons;
+        List<User> generalResourceResponsiblePersons;
+        if (request != null && (request.getResources() != null || request.getGeneralResources() != null)) {
+            ResolvedResources placeResources = resolvePlaceResourceRequests(letter.getEventPlace(), request.getResources());
+            ResolvedResources generalResources = resolveGeneralResourceRequests(request.getGeneralResources());
+            attachResourceRequests(letter, mergeResolved(placeResources, generalResources));
+            placeResourceResponsiblePersons = placeResources.responsiblePersons();
+            generalResourceResponsiblePersons = generalResources.responsiblePersons();
+        } else {
+            placeResourceResponsiblePersons = placeResponsiblePersonsFromExistingRequests(letter);
+            generalResourceResponsiblePersons = generalResponsiblePersonsFromExistingRequests(letter);
         }
 
         workflowStepRepository.deleteAll(oldSteps);
@@ -483,7 +510,10 @@ public class LetterService {
         letter.setApprovalNote(null);
         letter.setGlobalStatus(LetterStatus.PENDING);
 
-        List<WorkflowStep> steps = buildAndSaveSteps(letter, seniorTreasurer, manualApprovers);
+        List<WorkflowStep> steps = buildAndSaveSteps(
+                letter, seniorTreasurer, manualApprovers,
+                placeResourceResponsiblePersons, generalResourceResponsiblePersons
+        );
         letterRepository.save(letter);
 
         emailNotificationService.notifyApproverAssigned(letter, steps.get(0).getUser());
@@ -500,10 +530,8 @@ public class LetterService {
                 .orElseThrow(() -> new ResourceNotFoundException("Letter", "id", letterId));
 
         boolean isOwner = letter.getUser().getRegNumber().equals(currentUser.getRegNumber());
-        boolean isSeniorTreasurer = letter.getClub() != null && clubExecutiveRepository
-                .findByClub_IdAndExecutiveRole(letter.getClub().getId(), ClubExecutiveRole.SENIOR_TREASURER)
-                .map(ce -> ce.getUser().getRegNumber().equals(currentUser.getRegNumber()))
-                .orElse(false);
+        boolean isSeniorTreasurer = letter.getClub() != null
+                && currentUser.getRegNumber().equals(letter.getClub().getSeniorTreasurerRegNumber());
         if (!isOwner && !isSeniorTreasurer) {
             throw new ForbiddenException("Only the club secretary or senior treasurer can cancel this letter");
         }
@@ -536,13 +564,13 @@ public class LetterService {
         currentStep.setRemarks(remarks);
         currentStep.setActedAt(LocalDateTime.now());
 
-        boolean bouncedReforward = currentStep.isRequiresSignature()
-                && steps.stream().anyMatch(s -> !s.isRequiresSignature() && s.getStatus() == StepStatus.REJECTED);
+        boolean bouncedReforward = isTreasurerStep(letter, currentStep)
+                && steps.stream().anyMatch(s -> !isTreasurerStep(letter, s) && s.getStatus() == StepStatus.REJECTED);
 
         WorkflowStep nextStep;
         if (bouncedReforward) {
             nextStep = steps.stream()
-                    .filter(s -> !s.isRequiresSignature() && s.getStatus() == StepStatus.REJECTED)
+                    .filter(s -> !isTreasurerStep(letter, s) && s.getStatus() == StepStatus.REJECTED)
                     .min(Comparator.comparingInt(WorkflowStep::getStepOrder))
                     .orElse(null);
             if (nextStep != null) {
@@ -587,10 +615,14 @@ public class LetterService {
     }
 
     /**
-     * Builds the workflow: senior treasurer first, then the place-responsible person (if a place is
-     * chosen and it is not the senior treasurer), then the manually selected approvers.
+     * Builds the workflow: venue's responsible person, then the responsible TO for each requested
+     * place-bound resource, then the responsible TO for each requested standalone equipment item,
+     * then the senior treasurer, then the manually selected approvers.
      */
-    private List<WorkflowStep> buildAndSaveSteps(Letter letter, User seniorTreasurer, List<User> manualApprovers) {
+    private List<WorkflowStep> buildAndSaveSteps(
+            Letter letter, User seniorTreasurer, List<User> manualApprovers,
+            List<User> placeResourceResponsiblePersons, List<User> generalResourceResponsiblePersons
+    ) {
         List<User> ordered = new ArrayList<>();
 
         String placeResponsibleReg = null;
@@ -606,6 +638,28 @@ public class LetterService {
                 // treasurer signs off, so they lead the pipeline when a venue is requested.
                 ordered.add(place.getResponsiblePerson());
             }
+        }
+
+        Set<String> resourceApproverRegs = new HashSet<>();
+        // Standalone equipment's responsible person must sign for their approval, same as the
+        // treasurer - unlike place-bound equipment and the venue TO, which stay plain approvals.
+        Set<String> signatureRequiredRegs = new HashSet<>();
+        for (User resourceResponsible : placeResourceResponsiblePersons) {
+            boolean already = ordered.stream().anyMatch(u -> u.getRegNumber().equals(resourceResponsible.getRegNumber()))
+                    || resourceResponsible.getRegNumber().equals(seniorTreasurer.getRegNumber());
+            if (!already) {
+                ordered.add(resourceResponsible);
+                resourceApproverRegs.add(resourceResponsible.getRegNumber());
+            }
+        }
+        for (User resourceResponsible : generalResourceResponsiblePersons) {
+            boolean already = ordered.stream().anyMatch(u -> u.getRegNumber().equals(resourceResponsible.getRegNumber()))
+                    || resourceResponsible.getRegNumber().equals(seniorTreasurer.getRegNumber());
+            if (!already) {
+                ordered.add(resourceResponsible);
+                resourceApproverRegs.add(resourceResponsible.getRegNumber());
+            }
+            signatureRequiredRegs.add(resourceResponsible.getRegNumber());
         }
 
         ordered.add(seniorTreasurer);
@@ -626,6 +680,8 @@ public class LetterService {
             User user = ordered.get(i);
             boolean isPlaceResponsible = placeResponsibleReg != null && user.getRegNumber().equals(placeResponsibleReg);
             boolean isSeniorTreasurer = user.getRegNumber().equals(seniorTreasurer.getRegNumber());
+            boolean isResourceApprover = resourceApproverRegs.contains(user.getRegNumber());
+            boolean needsSignature = isSeniorTreasurer || signatureRequiredRegs.contains(user.getRegNumber());
 
             WorkflowStep step = new WorkflowStep();
             step.setLetter(letter);
@@ -635,10 +691,11 @@ public class LetterService {
             if (i == 0) {
                 step.setAssignedAt(LocalDateTime.now());
             }
-            // Only the senior treasurer signs, regardless of where they land in the order. The
-            // place-responsible person (TO) approves without a signature and creates the booking.
-            step.setRequiresSignature(isSeniorTreasurer);
+            // The senior treasurer and any standalone-equipment TO sign; the venue TO and
+            // place-bound-equipment TOs approve without a signature.
+            step.setRequiresSignature(needsSignature);
             step.setCreatesBooking(isPlaceResponsible);
+            step.setResourceApprover(isResourceApprover);
             steps.add(step);
         }
 
@@ -646,17 +703,34 @@ public class LetterService {
         return steps;
     }
 
+    // Identity-based checks for "is this the senior treasurer's step" - requiresSignature is no
+    // longer a reliable proxy for that, since general-equipment approvers also sign now.
+    private boolean isTreasurerStep(Letter letter, WorkflowStep step) {
+        String treasurerReg = letter.getClub() != null ? letter.getClub().getSeniorTreasurerRegNumber() : null;
+        return treasurerReg != null && treasurerReg.equals(step.getUser().getRegNumber());
+    }
+
+    private WorkflowStep findTreasurerStep(Letter letter, List<WorkflowStep> steps) {
+        String treasurerReg = letter.getClub() != null ? letter.getClub().getSeniorTreasurerRegNumber() : null;
+        if (treasurerReg == null) return null;
+        return steps.stream()
+                .filter(s -> treasurerReg.equals(s.getUser().getRegNumber()))
+                .findFirst()
+                .orElse(null);
+    }
+
     private Club resolveSecretaryClub(User secretary) {
-        return clubExecutiveRepository
-                .findByUser_RegNumberAndExecutiveRole(secretary.getRegNumber(), ClubExecutiveRole.SECRETARY)
-                .map(ce -> ce.getClub())
+        return clubRepository.findBySecretaryRegNumber(secretary.getRegNumber())
                 .orElseThrow(() -> new ForbiddenException("You are not assigned as secretary of any club"));
     }
 
     private User resolveSeniorTreasurer(Long clubId) {
-        return clubExecutiveRepository
-                .findByClub_IdAndExecutiveRole(clubId, ClubExecutiveRole.SENIOR_TREASURER)
-                .map(ce -> ce.getUser())
+        Club club = clubRepository.findById(clubId)
+                .orElseThrow(() -> new ResourceNotFoundException("Club", "id", clubId));
+        if (club.getSeniorTreasurerRegNumber() == null) {
+            throw new ApiException("Your club has no senior treasurer assigned. Contact the admin.");
+        }
+        return userRepository.findByRegNumber(club.getSeniorTreasurerRegNumber())
                 .orElseThrow(() -> new ApiException("Your club has no senior treasurer assigned. Contact the admin."));
     }
 
@@ -677,6 +751,14 @@ public class LetterService {
                 .build());
         response.setCreatedAt(letter.getCreatedAt());
         response.setUpdatedAt(letter.getUpdatedAt());
+        response.setResourceRequests(letter.getResourceRequests().stream()
+                .map(r -> ResourceRequestResponseDto.builder()
+                        .resourceName(r.getResourceName())
+                        .responsiblePersonName(r.getResponsiblePersonName())
+                        .quantityRequested(r.getQuantityRequested())
+                        .quantityAvailable(r.getQuantityAvailable())
+                        .build())
+                .toList());
 
         if (letter.getClub() != null) {
             response.setClubId(letter.getClub().getId());
@@ -733,9 +815,10 @@ public class LetterService {
             response.setNextApprovers(List.of());
         }
 
-        // Bounced letters sit on the senior treasurer while another step is REJECTED.
-        boolean bounced = currentStep != null && currentStep.isRequiresSignature()
-                && steps.stream().anyMatch(s -> !s.isRequiresSignature() && s.getStatus() == StepStatus.REJECTED);
+        // Bounced letters sit on the senior treasurer while another step is REJECTED. Identified
+        // by club assignment, not requiresSignature - general-equipment approvers sign too now.
+        boolean bounced = currentStep != null && isTreasurerStep(letter, currentStep)
+                && steps.stream().anyMatch(s -> !isTreasurerStep(letter, s) && s.getStatus() == StepStatus.REJECTED);
         boolean isCurrentUserStep = currentStep != null && currentUserRegNumber != null
                 && currentUserRegNumber.equals(currentStep.getUser().getRegNumber());
         boolean returned = letter.getGlobalStatus() == LetterStatus.RETURNED_TO_SECRETARY;
@@ -808,6 +891,133 @@ public class LetterService {
         }
 
         return approvers;
+    }
+
+    private record ResolvedResources(List<LetterResourceRequest> requests, List<User> responsiblePersons) {
+    }
+
+    // Resolves the secretary's picked place-bound equipment into snapshotted request rows plus
+    // the distinct set of TOs that must additionally approve the letter. This equipment always
+    // routes to the place's own responsible person - it has no responsible person of its own.
+    private ResolvedResources resolvePlaceResourceRequests(String placeName, List<ResourceRequestItemDto> items) {
+        if (items == null || items.isEmpty()) {
+            return new ResolvedResources(List.of(), List.of());
+        }
+        if (!StringUtils.hasText(placeName)) {
+            throw new ApiException("A venue must be selected to request resources");
+        }
+
+        List<LetterResourceRequest> requests = new ArrayList<>();
+        List<User> responsiblePersons = new ArrayList<>();
+
+        for (ResourceRequestItemDto item : items) {
+            if (item.getQuantity() == null || item.getQuantity() <= 0) {
+                throw new ApiException("Requested quantity must be greater than zero");
+            }
+            PlaceResource resource = placeResourceRepository.findById(item.getResourceId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Resource", "id", item.getResourceId()));
+            if (!resource.getPlace().getPlaceName().equalsIgnoreCase(placeName.trim())) {
+                throw new ApiException("Resource \"" + resource.getName() + "\" does not belong to the selected place");
+            }
+
+            User responsible = resource.getPlace().getResponsiblePerson();
+            addResolvedResource(requests, responsiblePersons, resource.getName(), responsible,
+                    item.getQuantity(), resource.getQuantity(), false);
+        }
+
+        return new ResolvedResources(requests, responsiblePersons);
+    }
+
+    // Resolves standalone equipment (not tied to any place) - each one carries its own required
+    // responsible person.
+    private ResolvedResources resolveGeneralResourceRequests(List<ResourceRequestItemDto> items) {
+        if (items == null || items.isEmpty()) {
+            return new ResolvedResources(List.of(), List.of());
+        }
+
+        List<LetterResourceRequest> requests = new ArrayList<>();
+        List<User> responsiblePersons = new ArrayList<>();
+
+        for (ResourceRequestItemDto item : items) {
+            if (item.getQuantity() == null || item.getQuantity() <= 0) {
+                throw new ApiException("Requested quantity must be greater than zero");
+            }
+            GeneralResource resource = generalResourceRepository.findById(item.getResourceId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Resource", "id", item.getResourceId()));
+
+            addResolvedResource(requests, responsiblePersons, resource.getName(), resource.getResponsiblePerson(),
+                    item.getQuantity(), resource.getQuantity(), true);
+        }
+
+        return new ResolvedResources(requests, responsiblePersons);
+    }
+
+    private void addResolvedResource(
+            List<LetterResourceRequest> requests, List<User> responsiblePersons,
+            String resourceName, User responsible, Integer quantityRequested, Integer quantityAvailable,
+            boolean isGeneralResource
+    ) {
+        LetterResourceRequest lrr = new LetterResourceRequest();
+        lrr.setResourceName(resourceName);
+        lrr.setGeneralResource(isGeneralResource);
+        lrr.setResponsiblePersonRegNumber(responsible != null ? responsible.getRegNumber() : null);
+        lrr.setResponsiblePersonName(responsible != null ? responsible.getUserName() : null);
+        lrr.setQuantityRequested(quantityRequested);
+        lrr.setQuantityAvailable(quantityAvailable);
+        requests.add(lrr);
+
+        if (responsible != null && responsiblePersons.stream()
+                .noneMatch(u -> u.getRegNumber().equals(responsible.getRegNumber()))) {
+            responsiblePersons.add(responsible);
+        }
+    }
+
+    private ResolvedResources mergeResolved(ResolvedResources a, ResolvedResources b) {
+        List<LetterResourceRequest> requests = new ArrayList<>(a.requests());
+        requests.addAll(b.requests());
+
+        List<User> responsiblePersons = new ArrayList<>(a.responsiblePersons());
+        for (User u : b.responsiblePersons()) {
+            if (responsiblePersons.stream().noneMatch(existing -> existing.getRegNumber().equals(u.getRegNumber()))) {
+                responsiblePersons.add(u);
+            }
+        }
+        return new ResolvedResources(requests, responsiblePersons);
+    }
+
+    private void attachResourceRequests(Letter letter, ResolvedResources resolved) {
+        letter.getResourceRequests().clear();
+        for (LetterResourceRequest lrr : resolved.requests()) {
+            lrr.setLetter(letter);
+            letter.getResourceRequests().add(lrr);
+        }
+    }
+
+    // Used on resend when the secretary doesn't resubmit a resources list: re-resolve the TOs
+    // from what's already snapshotted on the letter rather than dropping them silently. Split by
+    // source so standalone-equipment approvers keep requiring a signature after the rebuild.
+    private List<User> placeResponsiblePersonsFromExistingRequests(Letter letter) {
+        return responsiblePersonsFromExistingRequests(letter, false);
+    }
+
+    private List<User> generalResponsiblePersonsFromExistingRequests(Letter letter) {
+        return responsiblePersonsFromExistingRequests(letter, true);
+    }
+
+    private List<User> responsiblePersonsFromExistingRequests(Letter letter, boolean generalOnly) {
+        List<String> regNumbers = letter.getResourceRequests().stream()
+                .filter(r -> r.isGeneralResource() == generalOnly)
+                .map(LetterResourceRequest::getResponsiblePersonRegNumber)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .toList();
+        if (regNumbers.isEmpty()) return List.of();
+
+        List<User> resolved = new ArrayList<>();
+        for (String regNumber : regNumbers) {
+            userRepository.findByRegNumber(regNumber).ifPresent(resolved::add);
+        }
+        return resolved;
     }
 
     private String storePdf(MultipartFile letterPdf) {

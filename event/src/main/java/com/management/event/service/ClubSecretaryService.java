@@ -5,14 +5,12 @@ import com.management.event.dto.club.ClubResponseDto;
 import com.management.event.dto.club.SecretaryClubUpdateRequestDto;
 import com.management.event.entity.AppRole;
 import com.management.event.entity.Club;
-import com.management.event.entity.ClubExecutive;
-import com.management.event.entity.ClubExecutiveRole;
 import com.management.event.entity.User;
 import com.management.event.exception.BadRequestException;
 import com.management.event.exception.ForbiddenException;
 import com.management.event.exception.ResourceNotFoundException;
 import com.management.event.repository.ClubRepository;
-import com.management.event.repository.ClubExecutiveRepository;
+import com.management.event.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,8 +23,8 @@ import java.time.Instant;
 public class ClubSecretaryService {
 
     private final AuthenticatedUser authenticatedUser;
-    private final ClubExecutiveRepository clubExecutiveRepository;
     private final ClubRepository clubRepository;
+    private final UserRepository userRepository;
     private final ClubFileStorageService clubFileStorageService;
     private final UploadUrlMapper uploadUrlMapper;
 
@@ -44,6 +42,7 @@ public class ClubSecretaryService {
         club.setMission(nullIfBlank(req.getMission()));
         if (req.getDescription() != null) club.setDescription(req.getDescription());
         if (req.getExecutiveBoardJson() != null) club.setExecutiveBoardJson(req.getExecutiveBoardJson().trim());
+        if (req.getMembersJson() != null) club.setMembersJson(req.getMembersJson().trim());
 
         club.setUpdatedAt(Instant.now());
         clubRepository.save(club);
@@ -65,19 +64,16 @@ public class ClubSecretaryService {
         if (!RoleUtil.hasRole(user, AppRole.ROLE_SECRETARY)) {
             throw new ForbiddenException("Secretary privileges required");
         }
-        ClubExecutive cs = clubExecutiveRepository.findByUser_RegNumberAndExecutiveRole(user.getRegNumber(), ClubExecutiveRole.SECRETARY)
+        return clubRepository.findBySecretaryRegNumber(user.getRegNumber())
                 .orElseThrow(() -> new ForbiddenException("No club assigned to this secretary"));
-        Long clubId = cs.getClub().getId();
-        return clubRepository.findById(clubId)
-                .orElseThrow(() -> new ResourceNotFoundException("Club", "id", clubId));
     }
 
     private ClubResponseDto toDto(Club club) {
-        String sec = clubExecutiveRepository.findByClub_IdAndExecutiveRole(club.getId(), ClubExecutiveRole.SECRETARY)
-                .map(ce -> ce.getUser().getRegNumber())
-                .orElse(null);
-        var stExec = clubExecutiveRepository.findByClub_IdAndExecutiveRole(club.getId(), ClubExecutiveRole.SENIOR_TREASURER)
-                .orElse(null);
+        String secretaryName = club.getSecretaryRegNumber() == null ? null
+                : userRepository.findByRegNumber(club.getSecretaryRegNumber()).map(User::getUserName).orElse(null);
+        String treasurerName = club.getSeniorTreasurerRegNumber() == null ? null
+                : userRepository.findByRegNumber(club.getSeniorTreasurerRegNumber()).map(User::getUserName).orElse(null);
+
         return ClubResponseDto.builder()
                 .id(club.getId())
                 .clubName(club.getClubName())
@@ -86,9 +82,11 @@ public class ClubSecretaryService {
                 .mission(club.getMission())
                 .description(club.getDescription())
                 .executiveBoardJson(club.getExecutiveBoardJson())
-                .secretaryRegNumber(sec)
-                .seniorTreasurerRegNumber(stExec == null ? null : stExec.getUser().getRegNumber())
-                .seniorTreasurerName(stExec == null ? null : stExec.getUser().getUserName())
+                .membersJson(club.getMembersJson())
+                .secretaryRegNumber(club.getSecretaryRegNumber())
+                .secretaryName(secretaryName)
+                .seniorTreasurerRegNumber(club.getSeniorTreasurerRegNumber())
+                .seniorTreasurerName(treasurerName)
                 .build();
     }
 

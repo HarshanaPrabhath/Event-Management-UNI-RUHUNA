@@ -2,10 +2,10 @@ package com.management.event.controller;
 
 import com.management.event.dto.club.ClubResponseDto;
 import com.management.event.entity.Club;
-import com.management.event.entity.ClubExecutiveRole;
+import com.management.event.entity.User;
 import com.management.event.exception.ResourceNotFoundException;
 import com.management.event.repository.ClubRepository;
-import com.management.event.repository.ClubExecutiveRepository;
+import com.management.event.repository.UserRepository;
 import com.management.event.service.UploadUrlMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -22,7 +22,7 @@ import java.util.List;
 public class PublicClubController {
 
     private final ClubRepository clubRepository;
-    private final ClubExecutiveRepository clubExecutiveRepository;
+    private final UserRepository userRepository;
     private final UploadUrlMapper uploadUrlMapper;
 
     @GetMapping
@@ -46,11 +46,11 @@ public class PublicClubController {
     }
 
     private ClubResponseDto toDto(Club club) {
-        String sec = clubExecutiveRepository.findByClub_IdAndExecutiveRole(club.getId(), ClubExecutiveRole.SECRETARY)
-                .map(ce -> ce.getUser().getRegNumber())
-                .orElse(null);
-        var stExec = clubExecutiveRepository.findByClub_IdAndExecutiveRole(club.getId(), ClubExecutiveRole.SENIOR_TREASURER)
-                .orElse(null);
+        String secretaryName = club.getSecretaryRegNumber() == null ? null
+                : userRepository.findByRegNumber(club.getSecretaryRegNumber()).map(User::getUserName).orElse(null);
+        String treasurerName = club.getSeniorTreasurerRegNumber() == null ? null
+                : userRepository.findByRegNumber(club.getSeniorTreasurerRegNumber()).map(User::getUserName).orElse(null);
+
         return ClubResponseDto.builder()
                 .id(club.getId())
                 .clubName(club.getClubName())
@@ -59,9 +59,11 @@ public class PublicClubController {
                 .mission(club.getMission())
                 .description(club.getDescription())
                 .executiveBoardJson(club.getExecutiveBoardJson())
-                .secretaryRegNumber(sec)
-                .seniorTreasurerRegNumber(stExec == null ? null : stExec.getUser().getRegNumber())
-                .seniorTreasurerName(stExec == null ? null : stExec.getUser().getUserName())
+                .membersJson(club.getMembersJson())
+                .secretaryRegNumber(club.getSecretaryRegNumber())
+                .secretaryName(secretaryName)
+                .seniorTreasurerRegNumber(club.getSeniorTreasurerRegNumber())
+                .seniorTreasurerName(treasurerName)
                 .build();
     }
 }
