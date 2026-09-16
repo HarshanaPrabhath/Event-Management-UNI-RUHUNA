@@ -53,7 +53,9 @@ public class CalendarController {
 
     @GetMapping("/bookings")
     public ResponseEntity<List<CalendarEventResponseDto>> getAllBookings() {
-        return ResponseEntity.ok(calendarEventService.getAllBookings());
+        // Mirrors getEvents(): anonymous callers must not see pending/unapproved letters.
+        boolean isInternalUser = isAuthenticatedSystemUser();
+        return ResponseEntity.ok(calendarEventService.getAllBookings(isInternalUser));
     }
 
     @GetMapping("/conflicts")

@@ -32,10 +32,13 @@ public class CalendarEventService {
     private final LetterRepository letterRepository;
 
     @Transactional(readOnly = true)
-    public List<CalendarEventResponseDto> getAllBookings() {
+    public List<CalendarEventResponseDto> getAllBookings(boolean includePending) {
+        Set<LetterStatus> statuses = includePending
+                ? Set.of(LetterStatus.PENDING, LetterStatus.PENDING_BOOKING, LetterStatus.APPROVED)
+                : Set.of(LetterStatus.APPROVED);
+
         return letterRepository
-                .findByGlobalStatusInOrderByEventDateAscEventTimeAsc(
-                        Set.of(LetterStatus.PENDING, LetterStatus.PENDING_BOOKING, LetterStatus.APPROVED))
+                .findByGlobalStatusInOrderByEventDateAscEventTimeAsc(statuses)
                 .stream()
                 .map(this::letterToDto)
                 .toList();

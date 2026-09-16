@@ -23,7 +23,10 @@ import java.util.function.Function;
 @Service
 public class JwtService {
 
-    private static final String SECRET_KEY = "Z3s8D9fLrV1qW5mNtJxB7eKwY6uGh0PaMzRdTiLkVpSnCoXvUrEbHaGyNzMqJcKtZpWlXvOmCrYfBvTyLdRuGnHpWsKeJdXlNqMqTsBpErYwUeIrOpNvBsXqAjFmDcHsLkJrVsZxMfEdBpUqYrTgVnZmWxAoEuJrPtHgYdXoClMrNfBqStUkXiVwJzQtGkMnBjRpTwLuEwFoGpTxMnYcZoHeLdKsWqFxNyKrLzAbXe";
+    // Loaded from app.jwt.secret (env var JWT_SECRET in docker-compose), never hardcoded -
+    // a fixed literal here would mean every deployment shares the same signing key.
+    @Value("${app.jwt.secret}")
+    private String secretKey;
 
 
 
@@ -76,7 +79,7 @@ public class JwtService {
     }
 
     private Key getSignKey() {
-        byte[] keyBytes = Decoders.BASE64.decode(SECRET_KEY);
+        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
         return Keys.hmacShaKeyFor(keyBytes);
     }
 

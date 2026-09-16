@@ -35,7 +35,9 @@ public class AuthenticationService {
     private final RoleRepository roleRepository;
 
     public RegisterResponse register(RegisterRequest request) {
-        User savedUser = createUser(request);
+        // Public self-registration must never be allowed to pick its own role - otherwise anyone
+        // could POST {"role": ["admin"]} and grant themselves admin. Only ROLE_USER is possible here.
+        User savedUser = createUser(request, false);
         ResponseCookie jwtCookie = jwtService.generateJwtCookie(UserDetailsImpl.build(savedUser));
         return new RegisterResponse(toUserInfoResponse(savedUser), jwtCookie);
     }
@@ -44,14 +46,17 @@ public class AuthenticationService {
     // issue a JWT cookie - doing so would overwrite the calling admin's own session cookie in
     // the browser, silently logging them out and back in as the newly created (lower-privileged) user.
     public UserInfoResponse registerByAdmin(RegisterRequest request) {
-        User savedUser = createUser(request);
+        // Caller-selected roles are only trusted here, behind AdminUserController's admin check.
+        User savedUser = createUser(request, true);
         return toUserInfoResponse(savedUser);
     }
 
-    private User createUser(RegisterRequest request) {
+    private User createUser(RegisterRequest request, boolean allowRoleSelection) {
         String encodedPassword = passwordEncoder.encode(request.getPassword());
 
-        Set<String> strRoles = request.getRole() != null ? request.getRole() : new HashSet<>();
+        Set<String> strRoles = allowRoleSelection && request.getRole() != null
+                ? request.getRole()
+                : new HashSet<>();
         Set<Role> roles = new HashSet<>();
 
         if (strRoles.isEmpty()) {

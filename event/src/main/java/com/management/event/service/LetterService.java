@@ -40,13 +40,17 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.SequenceInputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -1020,21 +1024,25 @@ public class LetterService {
         return resolved;
     }
 
-    private String storePdf(MultipartFile letterPdf) {
-        String originalFilename = StringUtils.cleanPath(letterPdf.getOriginalFilename() == null ? "letter.pdf" : letterPdf.getOriginalFilename());
-        String extension = ".pdf";
-        int dotIndex = originalFilename.lastIndexOf('.');
-        if (dotIndex >= 0) {
-            extension = originalFilename.substring(dotIndex);
-        }
+    private static final byte[] PDF_MAGIC = "%PDF-".getBytes(StandardCharsets.US_ASCII);
 
+    private String storePdf(MultipartFile letterPdf) {
+        // Always store as .pdf regardless of the uploaded filename's extension, and verify the
+        // content actually starts with the PDF magic header - otherwise an attacker could upload
+        // e.g. "x.html" and have it served back, browser-rendered, from this app's own origin.
         Path uploadDirectory = Path.of(uploadDir);
-        Path targetFile = uploadDirectory.resolve(UUID.randomUUID() + extension);
+        Path targetFile = uploadDirectory.resolve(UUID.randomUUID() + ".pdf");
 
         try {
             Files.createDirectories(uploadDirectory);
             try (InputStream inputStream = letterPdf.getInputStream()) {
-                Files.copy(inputStream, targetFile, StandardCopyOption.REPLACE_EXISTING);
+                byte[] header = inputStream.readNBytes(PDF_MAGIC.length);
+                if (!Arrays.equals(header, PDF_MAGIC)) {
+                    throw new ApiException("Uploaded file is not a valid PDF");
+                }
+                try (InputStream fullStream = new SequenceInputStream(new ByteArrayInputStream(header), inputStream)) {
+                    Files.copy(fullStream, targetFile, StandardCopyOption.REPLACE_EXISTING);
+                }
             }
         } catch (IOException exception) {
             throw new ApiException("Failed to store letter PDF");

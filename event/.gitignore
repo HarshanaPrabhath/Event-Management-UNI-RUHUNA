@@ -34,3 +34,8 @@ build/
 
 # User-uploaded files (bind-mounted into Docker)
 uploads/
+
+# Secrets - never commit real credentials
+.env
+.env.*
+!.env.example
