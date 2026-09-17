@@ -1,17 +1,9 @@
 package com.management.event.security.config;
 
 import com.management.event.entity.AppRole;
-import com.management.event.entity.CalendarEvent;
-import com.management.event.entity.CalendarEventStatus;
-import com.management.event.entity.Club;
-import com.management.event.entity.Letter;
-import com.management.event.entity.LetterStatus;
 import com.management.event.entity.Place;
 import com.management.event.entity.Role;
 import com.management.event.entity.User;
-import com.management.event.repository.CalendarEventRepository;
-import com.management.event.repository.ClubRepository;
-import com.management.event.repository.LetterRepository;
 import com.management.event.repository.PlaceRepository;
 import com.management.event.repository.RoleRepository;
 import com.management.event.repository.UserRepository;
@@ -35,7 +27,6 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 
 @Configuration
 @RequiredArgsConstructor
@@ -95,10 +86,7 @@ public class ApplicationConfig {
     public CommandLineRunner initUsers(UserRepository userRepository,
                                        RoleRepository roleRepository,
                                        PasswordEncoder passwordEncoder,
-                                       PlaceRepository placeRepository,
-                                       LetterRepository letterRepository,
-                                       CalendarEventRepository calendarEventRepository,
-                                       ClubRepository clubRepository) {
+                                       PlaceRepository placeRepository) {
         return args -> {
             for (AppRole appRole : AppRole.values()) {
                 if (roleRepository.findByRoleName(appRole).isEmpty()) {
@@ -106,258 +94,127 @@ public class ApplicationConfig {
                 }
             }
 
-            Role userRole = roleRepository.findByRoleName(AppRole.ROLE_USER).orElseThrow();
             Role adminRole = roleRepository.findByRoleName(AppRole.ROLE_ADMIN).orElseThrow();
             Role lecturerRole = roleRepository.findByRoleName(AppRole.ROLE_LECTURER).orElseThrow();
             Role deanRole = roleRepository.findByRoleName(AppRole.ROLE_DEAN).orElseThrow();
-            Role secretaryRole = roleRepository.findByRoleName(AppRole.ROLE_SECRETARY).orElseThrow();
-            Role seniorTreasurerRole = roleRepository.findByRoleName(AppRole.ROLE_SENIOR_TRESURER).orElseThrow();
+            Role toRole = roleRepository.findByRoleName(AppRole.ROLE_TO).orElseThrow();
 
-            if (userRepository.findByEmail("john@example.com").isEmpty()) {
-                User user1 = new User();
-                user1.setUserName("john");
-                user1.setEmail("john@example.com");
-                user1.setRegNumber("TG/2023/001");
-                user1.setPassword(passwordEncoder.encode("1234"));
-                user1.setRoles(new HashSet<>(List.of(userRole)));
-                userRepository.save(user1);
+            if (userRepository.findByRegNumber("ADMIN/001").isEmpty()) {
+                User admin = new User();
+                admin.setUserName("admin");
+                admin.setEmail("admin@example.com");
+                admin.setRegNumber("ADMIN/001");
+                admin.setPassword(passwordEncoder.encode("1234"));
+                admin.setRoles(new HashSet<>(List.of(adminRole)));
+                userRepository.save(admin);
             }
 
-            if (userRepository.findByEmail("admin@example.com").isEmpty()) {
-                User user2 = new User();
-                user2.setUserName("admin");
-                user2.setEmail("admin@example.com");
-                user2.setRegNumber("ADMIN/001");
-                user2.setPassword(passwordEncoder.encode("1234"));
-                user2.setRoles(new HashSet<>(List.of(adminRole)));
-                userRepository.save(user2);
-            }
+            // --- Real department roster (source: PANEL.txt). Shared password "1234" for everyone,
+            // matching PANEL.txt - change on first login in a real deployment.
+            //
+            // The HOD is also a lecturer, so ROLE_LECTURER covers them too (there is no separate
+            // ROLE_HOD in the system). Any lecturer here - HOD included - can additionally be
+            // picked as a club's senior treasurer from the admin's "Create Club" screen;
+            // ClubAdminService.assignSeniorTreasurer() adds ROLE_SENIOR_TRESURER to them
+            // automatically at that point, so nothing extra needs to be seeded for that here.
+            seedLecturer(userRepository, lecturerRole, passwordEncoder,
+                    "Dr. H.M. Chandana Pushpakumara", "chandanap@ictec.ruh.ac.lk", "ICT-HOD-Chanadana");
+            seedLecturer(userRepository, lecturerRole, passwordEncoder,
+                    "Mr. P.H.P.N Laksiri", "phpnlaksiri@ictec.ruh.ac.lk", "LC-Laksiri");
+            seedLecturer(userRepository, lecturerRole, passwordEncoder,
+                    "Ms. Rumeshika W. arachi", "rumeshika@ictec.ruh.ac.lk", "LC-Rumeshika");
+            seedLecturer(userRepository, lecturerRole, passwordEncoder,
+                    "Ms. Buddika Gayashani", "buddika@ictec.ruh.ac.lk", "LC-Buddika");
+            seedLecturer(userRepository, lecturerRole, passwordEncoder,
+                    "Ms. Malsha Prabuddhi", "malsha@ictec.ruh.ac.lk", "LC-Malsha");
+            seedLecturer(userRepository, lecturerRole, passwordEncoder,
+                    "Ms. Chanduni Gamage", "chanduni@ictec.ruh.ac.lk", "LC-Chanduni");
+            seedLecturer(userRepository, lecturerRole, passwordEncoder,
+                    "Ms. E.H.M.P.M. Wijerathna", "piyumi@ictec.ruh.ac.lk", "LC-Wijerathna");
+            seedLecturer(userRepository, lecturerRole, passwordEncoder,
+                    "Ms. R.D.N. Shakya", "shakya@ictec.ruh.ac.lk", "LC-Shakya");
+            seedLecturer(userRepository, lecturerRole, passwordEncoder,
+                    "Ms. Akila Brahmana", "akila@ictec.ruh.ac.lk", "LC-Akila");
+            seedLecturer(userRepository, lecturerRole, passwordEncoder,
+                    "Mr. A.W.A.T. Dilhan", "dilhan@ictec.ruh.ac.lk", "LC-Dilhan");
+            seedLecturer(userRepository, lecturerRole, passwordEncoder,
+                    "Mr. Shashitha Lakal", "shashithal@ictec.ruh.ac.lk", "LC-Shashitha");
+            seedLecturer(userRepository, lecturerRole, passwordEncoder,
+                    "Ms. Dinoo Gunasekera", "dinoog@ictec.ruh.ac.lk", "LC-Dinoo");
+            seedLecturer(userRepository, lecturerRole, passwordEncoder,
+                    "Ms. Sandaruwani Pathirage", "sandaruwani@fot.ruh.ac.lk", "LC-Sandaruwani");
+            seedLecturer(userRepository, lecturerRole, passwordEncoder,
+                    "Ms. Dharani Gunasekara", "dharani@fot.ruh.ac.lk", "LC-Dharani");
+            seedLecturer(userRepository, lecturerRole, passwordEncoder,
+                    "Ms. Thirumugam Priyanka", "priyanka@fot.ruh.ac.lk", "LC-Priyanka");
+            seedLecturer(userRepository, lecturerRole, passwordEncoder,
+                    "Mr. R.M. Nayanajith Rathnayake", "nayanajith@fot.ruh.ac.lk", "LC-Nayanajith");
 
-            if (userRepository.findByRegNumber("LC2001").isEmpty()) {
-                User lecturer = new User();
-                lecturer.setUserName("Sujeewa LEC");
-                lecturer.setEmail("lecturer@example.com");
-                lecturer.setRegNumber("LC2001");
-                lecturer.setPassword(passwordEncoder.encode("1234"));
-                lecturer.setRoles(new HashSet<>(List.of(lecturerRole)));
-                userRepository.save(lecturer);
-            }
-
-            if (userRepository.findByRegNumber("DID100").isEmpty()) {
+            if (userRepository.findByRegNumber("DEAN-Jayasinghe").isEmpty()) {
                 User dean = new User();
-                dean.setUserName("Weerarathna DEAN");
-                dean.setEmail("dean@example.com");
-                dean.setRegNumber("DID100");
-                dean.setPassword(passwordEncoder.encode("deanpass"));
+                dean.setUserName("Prof. P.K.S.C Jayasinghe");
+                dean.setEmail("subash@ictec.ruh.ac.lk");
+                dean.setRegNumber("DEAN-Jayasinghe");
+                dean.setPassword(passwordEncoder.encode("1234"));
                 dean.setRoles(new HashSet<>(List.of(deanRole)));
                 userRepository.save(dean);
             }
 
-            if (userRepository.findByRegNumber("HODICT").isEmpty()) {
-                User hodict = new User();
-                hodict.setUserName("Kamal HOD");
-                hodict.setEmail("hodict@example.com");
-                hodict.setRegNumber("HODICT");
-                hodict.setPassword(passwordEncoder.encode("1234"));
-                hodict.setRoles(new HashSet<>(List.of(userRole)));
-                userRepository.save(hodict);
+            // Real ICT-department technical officers - responsible persons for the ICT places
+            // (Lab11 / Lab12) below. PANEL.txt doesn't give these two a reg number (only
+            // name/email/title), so "TO-<surname>" was made up to match the existing TO-* style.
+            if (userRepository.findByRegNumber("TO-Kumara").isEmpty()) {
+                User kumara = new User();
+                kumara.setUserName("Mr. W.P.C. D. Kumara");
+                kumara.setEmail("kumara@gmail.com");
+                kumara.setRegNumber("TO-Kumara");
+                kumara.setPassword(passwordEncoder.encode("1234"));
+                kumara.setRoles(new HashSet<>(List.of(toRole)));
+                userRepository.save(kumara);
+            }
+            if (userRepository.findByRegNumber("TO-Ranasinghe").isEmpty()) {
+                User ranasinghe = new User();
+                ranasinghe.setUserName("Ms. T.P.Ranasinghe");
+                ranasinghe.setEmail("ranasinghe@gmail.com");
+                ranasinghe.setRegNumber("TO-Ranasinghe");
+                ranasinghe.setPassword(passwordEncoder.encode("1234"));
+                ranasinghe.setRoles(new HashSet<>(List.of(toRole)));
+                userRepository.save(ranasinghe);
             }
 
-            if (userRepository.findByRegNumber("ET-TO1").isEmpty()) {
-                User etTo = new User();
-                etTo.setUserName("et-to");
-                etTo.setEmail("et.to@example.com");
-                etTo.setRegNumber("ET-TO1");
-                etTo.setPassword(passwordEncoder.encode("1234"));
-                etTo.setRoles(new HashSet<>(List.of(userRole)));
-                userRepository.save(etTo);
-            }
-
-            if (userRepository.findByRegNumber("ICT-TO2").isEmpty()) {
-                User ictTo = new User();
-                ictTo.setUserName("ict-to");
-                ictTo.setEmail("ict.to@example.com");
-                ictTo.setRegNumber("ICT-TO2");
-                ictTo.setPassword(passwordEncoder.encode("1234"));
-                ictTo.setRoles(new HashSet<>(List.of(userRole)));
-                userRepository.save(ictTo);
-            }
-
-            if (userRepository.findByRegNumber("BST-TO2").isEmpty()) {
-                User bstTo = new User();
-                bstTo.setUserName("bst-to");
-                bstTo.setEmail("bst.to@example.com");
-                bstTo.setRegNumber("BST-TO2");
-                bstTo.setPassword(passwordEncoder.encode("1234"));
-                bstTo.setRoles(new HashSet<>(List.of(userRole)));
-                userRepository.save(bstTo);
-            }
-
-            if (userRepository.findByRegNumber("D-OFFICE-01").isEmpty()) {
-                User dOffice = new User();
-                dOffice.setUserName("d-office");
-                dOffice.setEmail("d.office@example.com");
-                dOffice.setRegNumber("D-OFFICE-01");
-                dOffice.setPassword(passwordEncoder.encode("1234"));
-                dOffice.setRoles(new HashSet<>(List.of(userRole)));
-                userRepository.save(dOffice);
-            }
-
+            // No one is named in PANEL.txt for ET / BST / general-office, so those places are seeded
+            // with no responsible person (nullable) instead of a placeholder account. Assign a real
+            // person via /api/admin/places once known - AdminPlaceService grants ROLE_TO at that point.
             if (placeRepository.count() == 0) {
-                User etTo    = userRepository.findByRegNumber("ET-TO1").orElseThrow();
-                User ictTo   = userRepository.findByRegNumber("ICT-TO2").orElseThrow();
-                User bstTo   = userRepository.findByRegNumber("BST-TO2").orElseThrow();
-                User dOffice = userRepository.findByRegNumber("D-OFFICE-01").orElseThrow();
+                User ictToLab11 = userRepository.findByRegNumber("TO-Kumara").orElseThrow();
+                User ictToLab12 = userRepository.findByRegNumber("TO-Ranasinghe").orElseThrow();
 
                 placeRepository.saveAll(List.of(
-                        new Place(null, "Auditorium", "All",  450,  null, dOffice),
-                        new Place(null, "Lab11",      "ICT",  80,   null, ictTo),
-                        new Place(null, "Lab12",      "ICT",  110,  null, ictTo),
-                        new Place(null, "NBLLT",      "ET",   200,  null, etTo),
-                        new Place(null, "LH210",      "ET",   500,  null, etTo),
-                        new Place(null, "BST12",      "BST",  120,  null, bstTo),
-                        new Place(null, "Ground",     "All",  null, null, dOffice),
-                        new Place(null, "King Road",  "All",  null, null, dOffice)
+                        new Place(null, "Auditorium", "All",  450,  null, null),
+                        new Place(null, "Lab11",      "ICT",  80,   null, ictToLab11),
+                        new Place(null, "Lab12",      "ICT",  110,  null, ictToLab12),
+                        new Place(null, "NBLLT",      "ET",   200,  null, null),
+                        new Place(null, "LH210",      "ET",   500,  null, null),
+                        new Place(null, "BST12",      "BST",  120,  null, null),
+                        new Place(null, "Ground",     "All",  null, null, null),
+                        new Place(null, "King Road",  "All",  null, null, null)
                 ));
             }
 
-            // Demo club with a secretary and a senior treasurer (idempotent), so the club letter flow
-            // is testable without first calling /api/admin/clubs.
-            if (userRepository.findByRegNumber("CLUB-SEC-01").isEmpty()) {
-                User clubSecretary = new User();
-                clubSecretary.setUserName("club-secretary");
-                clubSecretary.setEmail("club.secretary@example.com");
-                clubSecretary.setRegNumber("CLUB-SEC-01");
-                clubSecretary.setPassword(passwordEncoder.encode("1234"));
-                clubSecretary.setRoles(new HashSet<>(List.of(secretaryRole)));
-                userRepository.save(clubSecretary);
-            }
-            if (userRepository.findByRegNumber("CLUB-ST-01").isEmpty()) {
-                User clubSeniorTreasurer = new User();
-                clubSeniorTreasurer.setUserName("club-senior-treasurer");
-                clubSeniorTreasurer.setEmail("club.senior.treasurer@example.com");
-                clubSeniorTreasurer.setRegNumber("CLUB-ST-01");
-                clubSeniorTreasurer.setPassword(passwordEncoder.encode("1234"));
-                clubSeniorTreasurer.setRoles(new HashSet<>(List.of(seniorTreasurerRole)));
-                userRepository.save(clubSeniorTreasurer);
-            }
-            if (clubRepository.findByClubName("Computer Society").isEmpty()) {
-                Club club = new Club();
-                club.setClubName("Computer Society");
-                club.setSecretaryRegNumber("CLUB-SEC-01");
-                club.setSeniorTreasurerRegNumber("CLUB-ST-01");
-                club.setCreatedAt(java.time.Instant.now());
-                club.setUpdatedAt(java.time.Instant.now());
-                clubRepository.save(club);
-            }
-
-            // Seed 3 calendar events for May 2026 (idempotent).
-            User admin = userRepository.findByRegNumber("ADMIN/001").orElseThrow();
-
-            seedApprovedCalendarEvent(
-                    "May 2026 Career Guidance",
-                    "Career guidance session for undergraduates.",
-                    java.time.LocalDate.of(2026, 5, 5),
-                    java.time.LocalTime.of(9, 0),
-                    java.time.LocalTime.of(11, 0),
-                    "Auditorium",
-                    admin,
-                    placeRepository,
-                    letterRepository,
-                    calendarEventRepository
-            );
-
-            seedApprovedCalendarEvent(
-                    "May 2026 Coding Workshop",
-                    "Hands-on coding workshop.",
-                    java.time.LocalDate.of(2026, 5, 12),
-                    java.time.LocalTime.of(13, 30),
-                    java.time.LocalTime.of(16, 30),
-                    "Lab12",
-                    admin,
-                    placeRepository,
-                    letterRepository,
-                    calendarEventRepository
-            );
-
-            seedApprovedCalendarEvent(
-                    "May 2026 Department Seminar",
-                    "Monthly department seminar.",
-                    java.time.LocalDate.of(2026, 5, 28),
-                    java.time.LocalTime.of(16, 0),
-                    java.time.LocalTime.of(18, 0),
-                    "NBLLT",
-                    admin,
-                    placeRepository,
-                    letterRepository,
-                    calendarEventRepository
-            );
-
-            System.out.println("Default roles, users, and places initialized (if missing).");
+            System.out.println("Admin, department roster (PANEL.txt), and places initialized (if missing).");
         };
     }
 
-    private static void seedApprovedCalendarEvent(
-            String title,
-            String description,
-            java.time.LocalDate date,
-            java.time.LocalTime time,
-            java.time.LocalTime endTime,
-            String placeName,
-            User owner,
-            PlaceRepository placeRepository,
-            LetterRepository letterRepository,
-            CalendarEventRepository calendarEventRepository
-    ) {
-        Optional<Letter> existingLetter = letterRepository.findByTitleAndEventDateAndEventTimeAndEventPlace(
-                title, date, time, placeName
-        );
-
-        Letter letter = existingLetter.orElseGet(() -> {
-            Letter l = new Letter();
-            l.setUser(owner);
-            l.setTitle(title);
-            l.setDescription(description);
-            l.setEventDate(date);
-            l.setEventTime(time);
-            l.setEventEndTime(endTime);
-            l.setEventPlace(placeName);
-            l.setPdfPath("uploads/letters/seed-" + title.toLowerCase().replace(' ', '-') + ".pdf");
-            l.setGlobalStatus(LetterStatus.APPROVED);
-            l.setRejectionReason(null);
-            return letterRepository.save(l);
-        });
-
-        // Ensure legacy letter rows get end time for correct conflict detection.
-        if (letter.getEventEndTime() == null) {
-            letter.setEventEndTime(endTime);
-            letterRepository.save(letter);
-        }
-
-        CalendarEvent existingEvent = calendarEventRepository.findByLetterId(letter.getId()).orElse(null);
-        if (existingEvent == null) {
-            CalendarEvent event = new CalendarEvent();
-            event.setLetter(letter);
-            event.setTitle(title);
-            event.setDescription(description);
-            event.setEventDate(date);
-            event.setEventTime(time);
-            event.setEndTime(endTime);
-            event.setPlaceName(placeName);
-            event.setPlace(placeRepository.findByPlaceName(placeName).orElse(null));
-            event.setStatus(CalendarEventStatus.APPROVED);
-            calendarEventRepository.save(event);
-        } else {
-            // Keep seed data consistent if the letter exists but event fields changed.
-            existingEvent.setTitle(title);
-            existingEvent.setDescription(description);
-            existingEvent.setEventDate(date);
-            existingEvent.setEventTime(time);
-            existingEvent.setEndTime(endTime);
-            existingEvent.setPlaceName(placeName);
-            existingEvent.setPlace(placeRepository.findByPlaceName(placeName).orElse(null));
-            existingEvent.setStatus(CalendarEventStatus.APPROVED);
-            calendarEventRepository.save(existingEvent);
+    private static void seedLecturer(UserRepository userRepository, Role lecturerRole, PasswordEncoder passwordEncoder,
+                                      String fullName, String email, String regNumber) {
+        if (userRepository.findByRegNumber(regNumber).isEmpty()) {
+            User lecturer = new User();
+            lecturer.setUserName(fullName);
+            lecturer.setEmail(email);
+            lecturer.setRegNumber(regNumber);
+            lecturer.setPassword(passwordEncoder.encode("1234"));
+            lecturer.setRoles(new HashSet<>(List.of(lecturerRole)));
+            userRepository.save(lecturer);
         }
     }
 }
