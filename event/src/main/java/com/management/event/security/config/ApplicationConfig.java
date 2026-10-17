@@ -65,7 +65,9 @@ public class ApplicationConfig {
                                 "/api/clubs/**",
                                 "/api/public/**",
                                 "/images/**",
-                                "/uploads/**"
+                                "/uploads/**",
+                                "/actuator/health",
+                                "/actuator/health/**"
                         )
                         .permitAll()
                         .anyRequest()
