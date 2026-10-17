@@ -25,6 +25,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: ghcr.io/${IMAGE_NAME:-induwara90/event-management-uni-ruhuna}:latest
     container_name: event_manage_app
     restart: always
     ports:
