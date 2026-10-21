@@ -28,6 +28,12 @@ public class JwtService {
     @Value("${app.jwt.secret}")
     private String secretKey;
 
+    @Value("${app.cookie.secure:false}")
+    private boolean cookieSecure;
+
+    @Value("${app.cookie.same-site:Lax}")
+    private String cookieSameSite;
+
 
 
     public String extractUserName(String token) {
@@ -113,9 +119,9 @@ public class JwtService {
         return ResponseCookie.from("eventManageFOT", token)
                 .path("/api")
                 .maxAge(24 * 60 * 60)
-                .httpOnly(true)       // keep token hidden from JS
-                .secure(true)        // true in production (HTTPS)
-                .sameSite("None")     // required for cross-origin cookies
+                .httpOnly(true)
+                .secure(cookieSecure)
+                .sameSite(cookieSameSite)
                 .build();
     }
 
@@ -125,6 +131,8 @@ public class JwtService {
                 .path("/api")
                 .maxAge(0)
                 .httpOnly(true)
+                .secure(cookieSecure)
+                .sameSite(cookieSameSite)
                 .build();
     }
 
