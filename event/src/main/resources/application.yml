@@ -25,6 +25,14 @@ app:
     # JWT_SECRET (see docker-compose.yml / .env) to their own secret - never reuse this one.
     secret: ${JWT_SECRET:K+Ys0/ucnzGZ+Q4UQs9rC+QN27PnUhcTXk6QYQMFBHUitkOs6xYhtLlE8Smyo5GjTDfSNNqdONH5jYqoSNOUKg==}
     expiration-ms: 86400000
+  cookie:
+    # false for HTTP VMs; set APP_COOKIE_SECURE=true when serving over HTTPS
+    secure: ${APP_COOKIE_SECURE:false}
+    # Lax for same-origin (nginx proxy); use None only with Secure=true for cross-site
+    same-site: ${APP_COOKIE_SAME_SITE:Lax}
+  cors:
+    # Comma-separated origin patterns. Defaults cover local Vite + production UI ports.
+    allowed-origin-patterns: ${APP_CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
   notifications:
     email:
       enabled: ${APP_NOTIFICATIONS_EMAIL_ENABLED:false}

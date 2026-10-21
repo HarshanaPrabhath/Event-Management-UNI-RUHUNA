@@ -7,12 +7,16 @@ import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.nio.file.Path;
+import java.util.Arrays;
 
 @Configuration
 public class WebMvcConfigure implements WebMvcConfigurer {
 
     @Value("${file.upload-dir}")
     private String uploadDir;
+
+    @Value("${app.cors.allowed-origin-patterns}")
+    private String allowedOriginPatterns;
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
@@ -24,12 +28,14 @@ public class WebMvcConfigure implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
+        String[] patterns = Arrays.stream(allowedOriginPatterns.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toArray(String[]::new);
 
         registry.addMapping("/**")
-                // Vite auto-bumps to the next free port (5173, 5174, 5175, ...) when one is
-                // already taken, so pin to a single port is fragile. Match localhost on any port.
-                .allowedOriginPatterns("http://localhost:*")
-                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                .allowedOriginPatterns(patterns)
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
                 .allowedHeaders("*")
                 .allowCredentials(true);
     }
