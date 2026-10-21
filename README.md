@@ -1,23 +1,23 @@
-# Event Management backend
+# Event Management Backend
 
-Spring Boot API. Published image: `ghcr.io/induwara90/event-management-uni-ruhuna:latest`.
+Spring Boot REST API for University Event Management System.
 
-## Local run (Compose)
+- **Published Image:** `ghcr.io/induwara90/event-management-uni-ruhuna:latest`
+- **Default Port:** `8081`
 
+## Local Development
+
+To run with MySQL via Docker:
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 
-- UI: http://localhost:8080
-- API: http://localhost:8081
-- MySQL: 127.0.0.1:3307 (database `events`)
+- API: `http://localhost:8081`
+- MySQL: `127.0.0.1:3307` (database `events`)
+- Default Admin Login: `ADMIN/001` / `1234`
 
-Default login after first start: `ADMIN/001` / `1234`.
+## Automated VM Deployment
 
-## Production / VM auto-deploy
-
-See **[DEPLOY.md](./DEPLOY.md)** for Docker-based CI/CD:
-
-`git push` → build & push GHCR image → SSH to VM → `docker compose pull && up`.
-
-Deploy assets live in `deploy/`.
+CI/CD is automated using GitHub Actions (`.github/workflows/docker-publish.yml`):
+1. On `git push origin main`, GitHub Actions builds the Docker image and publishes it to GitHub Container Registry (GHCR).
+2. It automatically SSHs into the production VM and pulls & updates the containers.

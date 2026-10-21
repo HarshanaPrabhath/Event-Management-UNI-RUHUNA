@@ -59,6 +59,7 @@ public class ApplicationConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
+                                "/api/check",
                                 "/api/auth/signin",
                                 "/api/auth/register",
                                 "/api/calendar/**",
