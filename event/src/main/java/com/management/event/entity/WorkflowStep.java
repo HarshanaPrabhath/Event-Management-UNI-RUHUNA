@@ -50,6 +50,13 @@ public class WorkflowStep {
     @Column(nullable = false)
     private boolean resourceApprover = false;
 
+    // Which resend cycle this step belongs to (0 = original submission, 1 = first resend, ...).
+    // Resend no longer deletes prior steps, so this scopes "the live workflow" (used to find the
+    // current/next step, the treasurer's step, etc.) to the latest cycle while still letting the
+    // full step history - every past cycle - be read back for display.
+    @Column(nullable = false)
+    private int resendRound = 0;
+
     // Optional predefined placement for the signature (PDF points).
     // If provided, the client can call sign endpoint without sending coordinates.
 //    private Integer signaturePageIndex;

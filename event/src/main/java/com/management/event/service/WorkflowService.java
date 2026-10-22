@@ -54,7 +54,7 @@ public class WorkflowService {
             default -> throw new ApiException("Invalid workflow action. Use approve, reject or return");
         }
 
-        List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(letterId);
+        List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByResendRoundAscStepOrderAsc(letterId);
         if (steps.isEmpty()) {
             throw new ResourceNotFoundException("Workflow", "letterId", letterId);
         }
@@ -101,6 +101,7 @@ public class WorkflowService {
                 .approverName(step.getUser().getUserName())
                 .approverRegNumber(step.getUser().getRegNumber())
                 .stepOrder(step.getStepOrder())
+                .resendRound(step.getResendRound())
                 .status(step.getStatus().name())
                 .remarks(step.getRemarks())
                 .build();

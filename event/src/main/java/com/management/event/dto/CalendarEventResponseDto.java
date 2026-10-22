@@ -22,4 +22,8 @@ public class CalendarEventResponseDto {
     private LocalTime endTime;
     private String placeName;
     private String status; // PENDING_BOOKING | APPROVED
+
+    // Which club is organizing this event - null for a legacy letter not linked to a club.
+    private Long clubId;
+    private String clubName;
 }

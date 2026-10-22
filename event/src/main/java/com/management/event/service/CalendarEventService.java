@@ -54,6 +54,8 @@ public class CalendarEventService {
                 .endTime(letter.getEventEndTime())
                 .placeName(letter.getEventPlace())
                 .status(letter.getGlobalStatus() != null ? letter.getGlobalStatus().name() : null)
+                .clubId(letter.getClub() != null ? letter.getClub().getId() : null)
+                .clubName(letter.getClub() != null ? letter.getClub().getClubName() : null)
                 .build();
     }
 
@@ -299,9 +301,10 @@ public class CalendarEventService {
     }
 
     private CalendarEventResponseDto toDto(CalendarEvent event) {
+        Letter letter = event.getLetter();
         return CalendarEventResponseDto.builder()
                 .calendarEventId(event.getId())
-                .letterId(event.getLetter() != null ? event.getLetter().getId() : null)
+                .letterId(letter != null ? letter.getId() : null)
                 .title(event.getTitle())
                 .description(event.getDescription())
                 .eventDate(event.getEventDate())
@@ -309,6 +312,8 @@ public class CalendarEventService {
                 .endTime(event.getEndTime())
                 .placeName(event.getPlaceName())
                 .status(event.getStatus() != null ? event.getStatus().name() : null)
+                .clubId(letter != null && letter.getClub() != null ? letter.getClub().getId() : null)
+                .clubName(letter != null && letter.getClub() != null ? letter.getClub().getClubName() : null)
                 .build();
     }
 

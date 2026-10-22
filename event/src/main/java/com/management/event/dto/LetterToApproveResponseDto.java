@@ -30,6 +30,10 @@ public class LetterToApproveResponseDto {
     private LocalDateTime updatedAt;
     private LocalDateTime finalDecisionAt;
 
+    // How many times this letter has been returned and resent (0 = never resent). Lets the UI
+    // show a "Resent" badge so approvers know an incoming letter isn't a fresh submission.
+    private int resendCount;
+
     // Club this letter belongs to (new club flow).
     private Long clubId;
     private String clubName;

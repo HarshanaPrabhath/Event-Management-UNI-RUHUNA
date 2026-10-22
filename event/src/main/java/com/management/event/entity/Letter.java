@@ -65,6 +65,12 @@ public class Letter {
     @Column(length = 1000)
     private String approvalNote;
 
+    // How many times this letter has been returned-to-secretary and resent. 0 = never resent.
+    // Doubles as the "live" workflow_steps.resend_round - lets resend keep every past round's
+    // steps around as history instead of deleting them.
+    @Column(nullable = false)
+    private int resendCount = 0;
+
     @Column(nullable = false)
     private LocalDateTime createdAt;
 

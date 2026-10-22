@@ -48,7 +48,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -74,6 +76,7 @@ public class LetterService {
     private final PdfSigningService pdfSigningService;
     private final EmailNotificationService emailNotificationService;
     private final UploadUrlMapper uploadUrlMapper;
+    private final ResourceAvailabilityService resourceAvailabilityService;
 
     @Value("${file.upload-dir}")
     private String uploadDir;
@@ -85,7 +88,7 @@ public class LetterService {
         return letterRepository.findByUserRegNumberOrderByIdDesc(currentUser.getRegNumber())
                 .stream()
                 .map(letter -> {
-                    List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(letter.getId());
+                    List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByResendRoundAscStepOrderAsc(letter.getId());
                     return buildLetterToApproveResponse(letter, steps, currentUser.getRegNumber());
                 })
                 .toList();
@@ -104,7 +107,7 @@ public class LetterService {
 
         return approvedSteps.stream()
                 .map(step -> {
-                    List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(step.getLetter().getId());
+                    List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByResendRoundAscStepOrderAsc(step.getLetter().getId());
                     return buildLetterToApproveResponse(step.getLetter(), steps, currentUser.getRegNumber());
                 })
                 .toList();
@@ -123,7 +126,7 @@ public class LetterService {
 
         return rejectedSteps.stream()
                 .map(step -> {
-                    List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(step.getLetter().getId());
+                    List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByResendRoundAscStepOrderAsc(step.getLetter().getId());
                     return buildLetterToApproveResponse(step.getLetter(), steps, currentUser.getRegNumber());
                 })
                 .toList();
@@ -142,7 +145,7 @@ public class LetterService {
 
         return pendingSteps.stream()
                 .map(step -> {
-                    List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(step.getLetter().getId());
+                    List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByResendRoundAscStepOrderAsc(step.getLetter().getId());
                     return buildLetterToApproveResponse(step.getLetter(), steps, currentUser.getRegNumber());
                 })
                 .toList();
@@ -177,9 +180,15 @@ public class LetterService {
 
         List<User> manualApprovers = resolveApprovers(approverDtos);
         ResolvedResources placeResources = resolvePlaceResourceRequests(
-                letterPlaceRequestDto.getPlaceName(), letterPlaceRequestDto.getResources()
+                letterPlaceRequestDto.getPlaceName(), letterPlaceRequestDto.getResources(),
+                letterPlaceRequestDto.getEventDate(), letterPlaceRequestDto.getEventTime(),
+                letterPlaceRequestDto.getEventEndTime(), null
         );
-        ResolvedResources generalResources = resolveGeneralResourceRequests(letterPlaceRequestDto.getGeneralResources());
+        ResolvedResources generalResources = resolveGeneralResourceRequests(
+                letterPlaceRequestDto.getGeneralResources(),
+                letterPlaceRequestDto.getEventDate(), letterPlaceRequestDto.getEventTime(),
+                letterPlaceRequestDto.getEventEndTime(), null
+        );
         ResolvedResources resolvedResources = mergeResolved(placeResources, generalResources);
 
         if (StringUtils.hasText(letterPlaceRequestDto.getPlaceName())
@@ -212,7 +221,7 @@ public class LetterService {
 
         List<WorkflowStep> steps = buildAndSaveSteps(
                 savedLetter, seniorTreasurer, manualApprovers,
-                placeResources.responsiblePersons(), generalResources.responsiblePersons()
+                placeResources.responsiblePersons(), generalResources.responsiblePersons(), 0
         );
 
         emailNotificationService.notifyApproverAssigned(savedLetter, steps.get(0).getUser());
@@ -222,7 +231,9 @@ public class LetterService {
     public void rejectLetter(Long letterId, @Valid LetterRejectRequestDto request) {
         User currentUser = authenticatedUser.getAuthenticatedUser();
 
-        List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(letterId);
+        Letter letter = letterRepository.findById(letterId)
+                .orElseThrow(() -> new ResourceNotFoundException("Letter", "id", letterId));
+        List<WorkflowStep> steps = currentRoundSteps(letter);
         if (steps.isEmpty()) {
             throw new ResourceNotFoundException("Letter", "id", letterId);
         }
@@ -238,7 +249,6 @@ public class LetterService {
 
         String rejectionText = trimToNull(firstNonBlank(request.getRejectionReason(), request.getRemarks()));
 
-        Letter letter = currentStep.getLetter();
         currentStep.setStatus(StepStatus.REJECTED);
         currentStep.setRemarks(rejectionText);
         currentStep.setActedAt(LocalDateTime.now());
@@ -286,7 +296,9 @@ public class LetterService {
     public void approveLetter(Long letterId, LetterApproveRequestDto request) {
         User currentUser = authenticatedUser.getAuthenticatedUser();
 
-        List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(letterId);
+        Letter letter = letterRepository.findById(letterId)
+                .orElseThrow(() -> new ResourceNotFoundException("Letter", "id", letterId));
+        List<WorkflowStep> steps = currentRoundSteps(letter);
         if (steps.isEmpty()) {
             throw new ResourceNotFoundException("Letter", "id", letterId);
         }
@@ -312,7 +324,9 @@ public class LetterService {
     public String signLetter(Long letterId, com.management.event.dto.SignLetterRequestDto request) {
         User currentUser = authenticatedUser.getAuthenticatedUser();
 
-        List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(letterId);
+        Letter letter = letterRepository.findById(letterId)
+                .orElseThrow(() -> new ResourceNotFoundException("Letter", "id", letterId));
+        List<WorkflowStep> steps = currentRoundSteps(letter);
         if (steps.isEmpty()) {
             throw new ResourceNotFoundException("Letter", "id", letterId);
         }
@@ -327,8 +341,6 @@ public class LetterService {
         if (!currentStep.isRequiresSignature()) {
             throw new ApiException("This step does not require a signature");
         }
-
-        Letter letter = currentStep.getLetter();
 
         String signedPath = pdfSigningService.stampSignature(letter, currentUser, request);
         letterRepository.save(letter);
@@ -347,7 +359,9 @@ public class LetterService {
             throw new ApiException("signature is required");
         }
 
-        List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(letterId);
+        Letter letter = letterRepository.findById(letterId)
+                .orElseThrow(() -> new ResourceNotFoundException("Letter", "id", letterId));
+        List<WorkflowStep> steps = currentRoundSteps(letter);
         if (steps.isEmpty()) {
             throw new ResourceNotFoundException("Letter", "id", letterId);
         }
@@ -368,7 +382,6 @@ public class LetterService {
                 (request == null) ? null : request.getSignature();
         if (effectiveReq == null) effectiveReq = new com.management.event.dto.SignLetterRequestDto();
 
-        Letter letter = currentStep.getLetter();
         String signedPath = pdfSigningService.stampSignature(letter, currentUser, effectiveReq, signaturePng);
         currentStep.setSignedAt(LocalDateTime.now());
 
@@ -385,7 +398,9 @@ public class LetterService {
     public void returnToSecretary(Long letterId, String remarks) {
         User currentUser = authenticatedUser.getAuthenticatedUser();
 
-        List<WorkflowStep> steps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(letterId);
+        Letter letter = letterRepository.findById(letterId)
+                .orElseThrow(() -> new ResourceNotFoundException("Letter", "id", letterId));
+        List<WorkflowStep> steps = currentRoundSteps(letter);
         if (steps.isEmpty()) {
             throw new ResourceNotFoundException("Letter", "id", letterId);
         }
@@ -399,7 +414,6 @@ public class LetterService {
             throw new ApiException("You are not the current approver for this letter");
         }
 
-        Letter letter = currentStep.getLetter();
         if (!isTreasurerStep(letter, currentStep)) {
             throw new ApiException("Only the senior treasurer step can return a letter to the secretary");
         }
@@ -463,14 +477,17 @@ public class LetterService {
             throw new ApiException("eventEndTime must be after eventTime");
         }
 
-        List<WorkflowStep> oldSteps = workflowStepRepository.findByLetterIdOrderByStepOrderAsc(letterId);
+        List<WorkflowStep> oldSteps = currentRoundSteps(letter);
 
         List<User> manualApprovers;
         if (request != null && request.getApprovers() != null && !request.getApprovers().isEmpty()) {
             manualApprovers = resolveApprovers(request.getApprovers());
         } else {
+            // Identify manual approvers by role, not by requiresSignature - every step signs now
+            // except the venue TO and place-bound-equipment TOs, so signature is no longer a valid
+            // proxy for "this is a manually added approver".
             manualApprovers = oldSteps.stream()
-                    .filter(s -> !s.isRequiresSignature() && !s.isCreatesBooking() && !s.isResourceApprover())
+                    .filter(s -> !s.isCreatesBooking() && !s.isResourceApprover() && !isTreasurerStep(letter, s))
                     .sorted(Comparator.comparingInt(WorkflowStep::getStepOrder))
                     .map(WorkflowStep::getUser)
                     .toList();
@@ -483,18 +500,26 @@ public class LetterService {
         List<User> placeResourceResponsiblePersons;
         List<User> generalResourceResponsiblePersons;
         if (request != null && (request.getResources() != null || request.getGeneralResources() != null)) {
-            ResolvedResources placeResources = resolvePlaceResourceRequests(letter.getEventPlace(), request.getResources());
-            ResolvedResources generalResources = resolveGeneralResourceRequests(request.getGeneralResources());
+            ResolvedResources placeResources = resolvePlaceResourceRequests(letter.getEventPlace(), request.getResources(),
+                    letter.getEventDate(), letter.getEventTime(), letter.getEventEndTime(), letterId);
+            ResolvedResources generalResources = resolveGeneralResourceRequests(request.getGeneralResources(),
+                    letter.getEventDate(), letter.getEventTime(), letter.getEventEndTime(), letterId);
             attachResourceRequests(letter, mergeResolved(placeResources, generalResources));
             placeResourceResponsiblePersons = placeResources.responsiblePersons();
             generalResourceResponsiblePersons = generalResources.responsiblePersons();
         } else {
             placeResourceResponsiblePersons = placeResponsiblePersonsFromExistingRequests(letter);
             generalResourceResponsiblePersons = generalResponsiblePersonsFromExistingRequests(letter);
+            // The secretary didn't resubmit the equipment list, but may have changed the date/time -
+            // re-check the untouched snapshot against whatever that (possibly new) slot looks like
+            // now, same as a fresh submission would.
+            assertExistingResourceRequestsFitOrThrow(letter, letterId);
         }
 
-        workflowStepRepository.deleteAll(oldSteps);
-        workflowStepRepository.flush();
+        // Keep every past round's steps as history instead of deleting them - the new round just
+        // starts fresh on top, so the complete flow (every rejection/resend cycle) stays visible.
+        int newRound = letter.getResendCount() + 1;
+        letter.setResendCount(newRound);
 
         User seniorTreasurer = resolveSeniorTreasurer(letter.getClub().getId());
 
@@ -516,7 +541,7 @@ public class LetterService {
 
         List<WorkflowStep> steps = buildAndSaveSteps(
                 letter, seniorTreasurer, manualApprovers,
-                placeResourceResponsiblePersons, generalResourceResponsiblePersons
+                placeResourceResponsiblePersons, generalResourceResponsiblePersons, newRound
         );
         letterRepository.save(letter);
 
@@ -563,6 +588,10 @@ public class LetterService {
 
     private void advanceAfterApproval(List<WorkflowStep> steps, WorkflowStep currentStep, User actor, String remarks) {
         Letter letter = currentStep.getLetter();
+
+        // Authoritative check: someone else's event may have claimed the shared equipment pool in
+        // the time between this request being submitted and this approver actually getting to it.
+        assertResourceStepStillFitsOrThrow(letter, currentStep);
 
         currentStep.setStatus(StepStatus.APPROVED);
         currentStep.setRemarks(remarks);
@@ -625,7 +654,8 @@ public class LetterService {
      */
     private List<WorkflowStep> buildAndSaveSteps(
             Letter letter, User seniorTreasurer, List<User> manualApprovers,
-            List<User> placeResourceResponsiblePersons, List<User> generalResourceResponsiblePersons
+            List<User> placeResourceResponsiblePersons, List<User> generalResourceResponsiblePersons,
+            int resendRound
     ) {
         List<User> ordered = new ArrayList<>();
 
@@ -645,15 +675,17 @@ public class LetterService {
         }
 
         Set<String> resourceApproverRegs = new HashSet<>();
-        // Standalone equipment's responsible person must sign for their approval, same as the
-        // treasurer - unlike place-bound equipment and the venue TO, which stay plain approvals.
-        Set<String> signatureRequiredRegs = new HashSet<>();
+        // Place-bound equipment routes through the venue's own TO, so - like the venue TO itself -
+        // it stays a plain approval. Standalone equipment's responsible person signs, same as
+        // every other non-TO step (senior treasurer and manual approvers included).
+        Set<String> placeResourceApproverRegs = new HashSet<>();
         for (User resourceResponsible : placeResourceResponsiblePersons) {
             boolean already = ordered.stream().anyMatch(u -> u.getRegNumber().equals(resourceResponsible.getRegNumber()))
                     || resourceResponsible.getRegNumber().equals(seniorTreasurer.getRegNumber());
             if (!already) {
                 ordered.add(resourceResponsible);
                 resourceApproverRegs.add(resourceResponsible.getRegNumber());
+                placeResourceApproverRegs.add(resourceResponsible.getRegNumber());
             }
         }
         for (User resourceResponsible : generalResourceResponsiblePersons) {
@@ -663,7 +695,6 @@ public class LetterService {
                 ordered.add(resourceResponsible);
                 resourceApproverRegs.add(resourceResponsible.getRegNumber());
             }
-            signatureRequiredRegs.add(resourceResponsible.getRegNumber());
         }
 
         ordered.add(seniorTreasurer);
@@ -685,18 +716,21 @@ public class LetterService {
             boolean isPlaceResponsible = placeResponsibleReg != null && user.getRegNumber().equals(placeResponsibleReg);
             boolean isSeniorTreasurer = user.getRegNumber().equals(seniorTreasurer.getRegNumber());
             boolean isResourceApprover = resourceApproverRegs.contains(user.getRegNumber());
-            boolean needsSignature = isSeniorTreasurer || signatureRequiredRegs.contains(user.getRegNumber());
+            boolean isPlaceBoundResourceApprover = placeResourceApproverRegs.contains(user.getRegNumber());
+            boolean needsSignature = !isPlaceResponsible && !isPlaceBoundResourceApprover;
 
             WorkflowStep step = new WorkflowStep();
             step.setLetter(letter);
             step.setUser(user);
             step.setStepOrder(i + 1);
+            step.setResendRound(resendRound);
             step.setStatus(i == 0 ? StepStatus.CURRENT : StepStatus.WAITING);
             if (i == 0) {
                 step.setAssignedAt(LocalDateTime.now());
             }
-            // The senior treasurer and any standalone-equipment TO sign; the venue TO and
-            // place-bound-equipment TOs approve without a signature.
+            // Everyone signs except the venue TO and place-bound-equipment TOs - the senior
+            // treasurer, standalone-equipment TOs, and every manually added approver (HOD, Dean, ...)
+            // sign.
             step.setRequiresSignature(needsSignature);
             step.setCreatesBooking(isPlaceResponsible);
             step.setResourceApprover(isResourceApprover);
@@ -742,6 +776,12 @@ public class LetterService {
         return steps.stream().anyMatch(s -> s.isCreatesBooking() && s.getStatus() == StepStatus.APPROVED);
     }
 
+    // The live round's steps only - what the approval state machine (approve/reject/sign/resend)
+    // operates on. Past rounds stay in the table as read-only history (see buildLetterToApproveResponse).
+    private List<WorkflowStep> currentRoundSteps(Letter letter) {
+        return workflowStepRepository.findByLetterIdAndResendRoundOrderByStepOrderAsc(letter.getId(), letter.getResendCount());
+    }
+
     private LetterToApproveResponseDto buildLetterToApproveResponse(Letter letter, List<WorkflowStep> steps, String currentUserRegNumber) {
         LetterToApproveResponseDto response = modelMapper.map(letter, LetterToApproveResponseDto.class);
         response.setLetterId(letter.getId());
@@ -769,6 +809,15 @@ public class LetterService {
             response.setClubName(letter.getClub().getClubName());
         }
 
+        response.setResendCount(letter.getResendCount());
+
+        // `steps` is the complete history across every resend round; the state machine (current
+        // step, next-up, "is this bounced" detection) must only look at the live round - a past
+        // round's terminal steps (e.g. an earlier rejection) must never leak into that.
+        List<WorkflowStep> currentRoundSteps = steps.stream()
+                .filter(s -> s.getResendRound() == letter.getResendCount())
+                .toList();
+
         LetterStatus status = letter.getGlobalStatus();
         WorkflowStep lastRejectedStep = steps.stream()
                 .filter(s -> s.getStatus() == StepStatus.REJECTED && s.getActedAt() != null)
@@ -789,27 +838,28 @@ public class LetterService {
             response.setFinalDecisionAt(null);
         }
 
+        // Pick the user's most recent involvement (highest round) when they appear in more than
+        // one resend round (e.g. the venue TO clears the venue again on every round).
         WorkflowStep myStep = (currentUserRegNumber == null) ? null : steps.stream()
                 .filter(s -> s.getUser() != null && currentUserRegNumber.equals(s.getUser().getRegNumber()))
-                .findFirst()
+                .max(Comparator.comparingInt(WorkflowStep::getResendRound).thenComparingInt(WorkflowStep::getStepOrder))
                 .orElse(null);
         response.setMyAction(myStep == null ? null : mapApprover(myStep));
 
-        WorkflowStep currentStep = steps.stream()
+        WorkflowStep currentStep = currentRoundSteps.stream()
                 .filter(step -> step.getStatus() == StepStatus.CURRENT)
                 .findFirst()
                 .orElse(null);
 
         if (currentStep != null) {
-            // Split by actual status, not raw stepOrder: a re-forward after a bounce can move
-            // CURRENT back to a step whose order is lower than an already-APPROVED step (when the
-            // place-responsible person precedes the senior treasurer in the chain).
+            // The complete flow: every APPROVED/REJECTED step across every past round plus the
+            // live round, oldest first (steps is already ordered by round then step).
             response.setPreviousApprovers(steps.stream()
                     .filter(step -> step.getStatus() == StepStatus.APPROVED || step.getStatus() == StepStatus.REJECTED)
                     .map(this::mapApprover)
                     .toList());
             response.setCurrentApprover(mapApprover(currentStep));
-            response.setNextApprovers(steps.stream()
+            response.setNextApprovers(currentRoundSteps.stream()
                     .filter(step -> step.getStatus() == StepStatus.WAITING)
                     .map(this::mapApprover)
                     .toList());
@@ -819,10 +869,12 @@ public class LetterService {
             response.setNextApprovers(List.of());
         }
 
-        // Bounced letters sit on the senior treasurer while another step is REJECTED. Identified
-        // by club assignment, not requiresSignature - general-equipment approvers sign too now.
+        // Bounced letters sit on the senior treasurer while another step in the SAME round is
+        // REJECTED. Scoped to the live round only - an earlier round's rejection (the very reason
+        // this round exists) must not keep tripping this forever. Identified by club assignment,
+        // not requiresSignature - general-equipment approvers sign too now.
         boolean bounced = currentStep != null && isTreasurerStep(letter, currentStep)
-                && steps.stream().anyMatch(s -> !isTreasurerStep(letter, s) && s.getStatus() == StepStatus.REJECTED);
+                && currentRoundSteps.stream().anyMatch(s -> !isTreasurerStep(letter, s) && s.getStatus() == StepStatus.REJECTED);
         boolean isCurrentUserStep = currentStep != null && currentUserRegNumber != null
                 && currentUserRegNumber.equals(currentStep.getUser().getRegNumber());
         boolean returned = letter.getGlobalStatus() == LetterStatus.RETURNED_TO_SECRETARY;
@@ -845,6 +897,7 @@ public class LetterService {
                 .name(step.getUser().getUserName())
                 .regNumber(step.getUser().getRegNumber())
                 .stepOrder(step.getStepOrder())
+                .resendRound(step.getResendRound())
                 .status(step.getStatus().name())
                 .remarks(step.getRemarks())
                 .assignedAt(step.getAssignedAt())
@@ -903,7 +956,12 @@ public class LetterService {
     // Resolves the secretary's picked place-bound equipment into snapshotted request rows plus
     // the distinct set of TOs that must additionally approve the letter. This equipment always
     // routes to the place's own responsible person - it has no responsible person of its own.
-    private ResolvedResources resolvePlaceResourceRequests(String placeName, List<ResourceRequestItemDto> items) {
+    // eventDate/startTime/endTime scope the shared-pool check to this event's slot; excludeLetterId
+    // is this letter's own id on a resend (so it doesn't count its own earlier claim against itself).
+    private ResolvedResources resolvePlaceResourceRequests(
+            String placeName, List<ResourceRequestItemDto> items,
+            LocalDate eventDate, LocalTime startTime, LocalTime endTime, Long excludeLetterId
+    ) {
         if (items == null || items.isEmpty()) {
             return new ResolvedResources(List.of(), List.of());
         }
@@ -923,9 +981,11 @@ public class LetterService {
             if (!resource.getPlace().getPlaceName().equalsIgnoreCase(placeName.trim())) {
                 throw new ApiException("Resource \"" + resource.getName() + "\" does not belong to the selected place");
             }
+            assertResourceFitsOrThrow(resource.getId(), false, resource.getName(), resource.getQuantity(),
+                    item.getQuantity(), eventDate, startTime, endTime, excludeLetterId);
 
             User responsible = resource.getPlace().getResponsiblePerson();
-            addResolvedResource(requests, responsiblePersons, resource.getName(), responsible,
+            addResolvedResource(requests, responsiblePersons, resource.getId(), resource.getName(), responsible,
                     item.getQuantity(), resource.getQuantity(), false);
         }
 
@@ -934,7 +994,10 @@ public class LetterService {
 
     // Resolves standalone equipment (not tied to any place) - each one carries its own required
     // responsible person.
-    private ResolvedResources resolveGeneralResourceRequests(List<ResourceRequestItemDto> items) {
+    private ResolvedResources resolveGeneralResourceRequests(
+            List<ResourceRequestItemDto> items,
+            LocalDate eventDate, LocalTime startTime, LocalTime endTime, Long excludeLetterId
+    ) {
         if (items == null || items.isEmpty()) {
             return new ResolvedResources(List.of(), List.of());
         }
@@ -948,20 +1011,88 @@ public class LetterService {
             }
             GeneralResource resource = generalResourceRepository.findById(item.getResourceId())
                     .orElseThrow(() -> new ResourceNotFoundException("Resource", "id", item.getResourceId()));
+            assertResourceFitsOrThrow(resource.getId(), true, resource.getName(), resource.getQuantity(),
+                    item.getQuantity(), eventDate, startTime, endTime, excludeLetterId);
 
-            addResolvedResource(requests, responsiblePersons, resource.getName(), resource.getResponsiblePerson(),
+            addResolvedResource(requests, responsiblePersons, resource.getId(), resource.getName(), resource.getResponsiblePerson(),
                     item.getQuantity(), resource.getQuantity(), true);
         }
 
         return new ResolvedResources(requests, responsiblePersons);
     }
 
+    // Fast pre-check at submission time: does this quantity still fit once whatever's already
+    // committed to OTHER overlapping events (elsewhere - a different venue, same date/time) is
+    // accounted for? The authoritative check happens again when the resource's responsible person
+    // actually approves (assertResourceStepStillFitsOrThrow) - this one just gives quick feedback.
+    private void assertResourceFitsOrThrow(
+            Long resourceId, boolean generalResource, String resourceName, Integer totalQuantity,
+            Integer requestedQuantity, LocalDate eventDate, LocalTime startTime, LocalTime endTime, Long excludeLetterId
+    ) {
+        if (eventDate == null || startTime == null || endTime == null) return;
+        int remaining = resourceAvailabilityService.remaining(
+                totalQuantity, resourceId, generalResource, eventDate, startTime, endTime, excludeLetterId);
+        if (requestedQuantity != null && requestedQuantity > remaining) {
+            throw new ApiException("Only " + remaining + " \"" + resourceName
+                    + "\" left for this date/time - the rest is already committed to another event.");
+        }
+    }
+
+    // Authoritative check, run right before a resource-owning step is actually marked APPROVED
+    // (mirrors CalendarEventService re-checking the venue at the same moment): re-total what's
+    // committed to other overlapping events right now and block if this step's own resource
+    // requests no longer fit. Applies to whichever step's user matches a request's responsible
+    // person - the venue TO (place-bound equipment) as much as a standalone-equipment owner.
+    private void assertResourceStepStillFitsOrThrow(Letter letter, WorkflowStep step) {
+        String approverReg = step.getUser() != null ? step.getUser().getRegNumber() : null;
+        if (approverReg == null || letter.getEventDate() == null || letter.getEventTime() == null) return;
+        LocalTime endTime = letter.getEventEndTime() != null ? letter.getEventEndTime() : letter.getEventTime().plusHours(1);
+
+        for (LetterResourceRequest row : letter.getResourceRequests()) {
+            if (row.getResourceId() == null) continue; // legacy row, created before this field existed
+            if (!approverReg.equals(row.getResponsiblePersonRegNumber())) continue;
+
+            Integer totalQuantity = row.isGeneralResource()
+                    ? generalResourceRepository.findById(row.getResourceId()).map(GeneralResource::getQuantity).orElse(null)
+                    : placeResourceRepository.findById(row.getResourceId()).map(PlaceResource::getQuantity).orElse(null);
+            if (totalQuantity == null) continue; // resource since deleted - nothing left to check against
+
+            int remaining = resourceAvailabilityService.remaining(totalQuantity, row.getResourceId(), row.isGeneralResource(),
+                    letter.getEventDate(), letter.getEventTime(), endTime, letter.getId());
+            if (row.getQuantityRequested() != null && row.getQuantityRequested() > remaining) {
+                throw new ApiException("Cannot approve: only " + remaining + " \"" + row.getResourceName()
+                        + "\" is left for this date/time - another event has since claimed the rest.");
+            }
+        }
+    }
+
+    // Resend without a fresh equipment list keeps the old snapshot rows as-is, but the secretary
+    // may still have changed the date/time on the same form - re-validate that unchanged snapshot
+    // against whatever the (possibly new) slot's availability looks like now.
+    private void assertExistingResourceRequestsFitOrThrow(Letter letter, Long excludeLetterId) {
+        if (letter.getEventDate() == null || letter.getEventTime() == null) return;
+        LocalTime endTime = letter.getEventEndTime() != null ? letter.getEventEndTime() : letter.getEventTime().plusHours(1);
+
+        for (LetterResourceRequest row : letter.getResourceRequests()) {
+            if (row.getResourceId() == null) continue; // legacy row, created before this field existed
+
+            Integer totalQuantity = row.isGeneralResource()
+                    ? generalResourceRepository.findById(row.getResourceId()).map(GeneralResource::getQuantity).orElse(null)
+                    : placeResourceRepository.findById(row.getResourceId()).map(PlaceResource::getQuantity).orElse(null);
+            if (totalQuantity == null) continue; // resource since deleted - nothing left to check against
+
+            assertResourceFitsOrThrow(row.getResourceId(), row.isGeneralResource(), row.getResourceName(), totalQuantity,
+                    row.getQuantityRequested(), letter.getEventDate(), letter.getEventTime(), endTime, excludeLetterId);
+        }
+    }
+
     private void addResolvedResource(
             List<LetterResourceRequest> requests, List<User> responsiblePersons,
-            String resourceName, User responsible, Integer quantityRequested, Integer quantityAvailable,
+            Long resourceId, String resourceName, User responsible, Integer quantityRequested, Integer quantityAvailable,
             boolean isGeneralResource
     ) {
         LetterResourceRequest lrr = new LetterResourceRequest();
+        lrr.setResourceId(resourceId);
         lrr.setResourceName(resourceName);
         lrr.setGeneralResource(isGeneralResource);
         lrr.setResponsiblePersonRegNumber(responsible != null ? responsible.getRegNumber() : null);

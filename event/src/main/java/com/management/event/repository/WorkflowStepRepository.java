@@ -10,7 +10,11 @@ import java.util.Optional;
 public interface WorkflowStepRepository extends JpaRepository<WorkflowStep, Long> {
     List<WorkflowStep> findByUserRegNumberAndStatusOrderByLetterIdDesc(String regNumber, StepStatus status);
 
-    List<WorkflowStep> findByLetterIdOrderByStepOrderAsc(Long letterId);
+    // Full history across every resend round, oldest round/step first - for display.
+    List<WorkflowStep> findByLetterIdOrderByResendRoundAscStepOrderAsc(Long letterId);
+
+    // Only the live round's steps - for the approval state machine (current/next/treasurer lookups).
+    List<WorkflowStep> findByLetterIdAndResendRoundOrderByStepOrderAsc(Long letterId, int resendRound);
 
     Optional<WorkflowStep> findByLetterIdAndStatus(Long letterId, StepStatus status);
 }

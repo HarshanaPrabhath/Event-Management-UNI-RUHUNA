@@ -10,6 +10,7 @@ public class WorkflowStepResponseDto {
     private String approverName;
     private String approverRegNumber;
     private Integer stepOrder;
+    private Integer resendRound;
     private String status;
     private String remarks;
 }

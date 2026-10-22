@@ -14,6 +14,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 
 @Service
@@ -23,9 +25,18 @@ public class PlaceService {
     private final PlaceRepository placeRepository;
     private final PlaceResourceRepository placeResourceRepository;
     private final UploadUrlMapper uploadUrlMapper;
+    private final ResourceAvailabilityService resourceAvailabilityService;
 
     @Transactional(readOnly = true)
     public List<PlaceSendDto> getPlaces() {
+        return getPlaces(null, null, null, null);
+    }
+
+    // eventDate/startTime/endTime, when given, make each resource's remainingQuantity reflect
+    // what's actually still free for that slot (excludeLetterId excludes a letter's own earlier
+    // claim, e.g. when the resend form re-lists resources for the letter being edited).
+    @Transactional(readOnly = true)
+    public List<PlaceSendDto> getPlaces(LocalDate eventDate, LocalTime startTime, LocalTime endTime, Long excludeLetterId) {
 
         List<Place> places = placeRepository.findAll();
 
@@ -33,15 +44,15 @@ public class PlaceService {
             return List.of();
         }
 
-        return places.stream().map(this::toDto).toList();
+        return places.stream().map(place -> toDto(place, eventDate, startTime, endTime, excludeLetterId)).toList();
     }
 
-    private PlaceSendDto toDto(Place place) {
+    private PlaceSendDto toDto(Place place, LocalDate eventDate, LocalTime startTime, LocalTime endTime, Long excludeLetterId) {
         User responsible = place.getResponsiblePerson();
         List<PlaceResourceResponseDto> resources = placeResourceRepository
                 .findByPlace_PlaceId(place.getPlaceId())
                 .stream()
-                .map(r -> toResourceDto(r, responsible))
+                .map(r -> toResourceDto(r, responsible, eventDate, startTime, endTime, excludeLetterId))
                 .toList();
 
         return PlaceSendDto.builder()
@@ -56,11 +67,24 @@ public class PlaceService {
                 .build();
     }
 
-    private PlaceResourceResponseDto toResourceDto(PlaceResource r, User placeResponsible) {
+    private PlaceResourceResponseDto toResourceDto(
+            PlaceResource r, User placeResponsible,
+            LocalDate eventDate, LocalTime startTime, LocalTime endTime, Long excludeLetterId
+    ) {
+        boolean hasSlot = eventDate != null && startTime != null && endTime != null;
+        int remaining = hasSlot
+                ? resourceAvailabilityService.remaining(r.getQuantity(), r.getId(), false, eventDate, startTime, endTime, excludeLetterId)
+                : (r.getQuantity() == null ? 0 : r.getQuantity());
+        int pending = hasSlot
+                ? resourceAvailabilityService.pendingElsewhere(r.getId(), false, eventDate, startTime, endTime, excludeLetterId)
+                : 0;
+
         return PlaceResourceResponseDto.builder()
                 .id(r.getId())
                 .name(r.getName())
                 .quantity(r.getQuantity())
+                .remainingQuantity(remaining)
+                .pendingElsewhere(pending)
                 .responsiblePersonRegNumber(placeResponsible != null ? placeResponsible.getRegNumber() : null)
                 .responsiblePersonName(placeResponsible != null ? placeResponsible.getUserName() : null)
                 .build();

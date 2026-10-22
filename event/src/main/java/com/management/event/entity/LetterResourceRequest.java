@@ -31,6 +31,13 @@ public class LetterResourceRequest {
     @JoinColumn(name = "letter_id", nullable = false)
     private Letter letter;
 
+    // The PlaceResource/GeneralResource id this came from (which table depends on generalResource
+    // below). Needed to reliably total up how much of THIS resource other events have already
+    // claimed for an overlapping date/time - resourceName alone isn't safe to match on since two
+    // different resources (even in different tables) could share a name. Null on rows created
+    // before this field existed.
+    private Long resourceId;
+
     @Column(nullable = false, length = 120)
     private String resourceName;
 
