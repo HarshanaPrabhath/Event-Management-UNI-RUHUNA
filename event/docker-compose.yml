@@ -1,32 +1,30 @@
-version: '3.8'
-
 services:
 
   mysql:
     image: mysql:8.0
     container_name: events_db
-    restart: always
+    restart: unless-stopped
     environment:
       MYSQL_DATABASE: events
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
     ports:
-      - "3307:3306"
+      - "127.0.0.1:3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     networks:
       - event_network
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/harshanaprabhath/event-manage:latest
     container_name: event_manage_app
-    restart: always
+    restart: unless-stopped
     ports:
       - "8081:8081"
     environment:
